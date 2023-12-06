@@ -1,28 +1,13 @@
+mod app;
+
 use anyhow::Result;
-use lve_rs;
+use app::App;
 use std::borrow::BorrowMut;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
-
-struct App {
-    window: lve_rs::Window,
-}
-
-impl App {
-    pub const WIDTH: i32 = 800;
-    pub const HEIGHT: i32 = 600;
-
-    pub fn new<T>(event_loop: &EventLoop<T>) -> Result<Self> {
-        let window = lve_rs::Window::new(event_loop, Self::WIDTH, Self::HEIGHT, "Hello Vulkan!")?;
-
-        Ok(Self { window })
-    }
-
-    pub fn run(&self) {}
-}
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -38,7 +23,7 @@ fn main() -> Result<()> {
                 Event::WindowEvent {
                     ref event,
                     window_id,
-                } if window_id == app.window.window().id() => match event {
+                } if window_id == app.window().id() => match event {
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                     _ => (),
                 },
