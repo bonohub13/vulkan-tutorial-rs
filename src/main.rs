@@ -10,8 +10,6 @@ use winit::{
 };
 
 fn main() -> Result<()> {
-    env_logger::init();
-
     let mut event_loop = EventLoop::new();
     let app = App::new(&event_loop)?;
 
