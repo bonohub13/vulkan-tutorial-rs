@@ -1,2 +1,3 @@
 /target
 /lve_rs/target
+/shaders/*.spv

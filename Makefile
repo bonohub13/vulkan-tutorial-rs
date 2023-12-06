@@ -1,5 +1,6 @@
 SHELL := bash
 CC := $(shell which cargo)
+GLSLC := $(shell which glslc)
 PWD := $(shell pwd)
 PROJECT_NAME := $(shell pwd | sed "s#.*/##")
 DOCKER_IMAGE_NAME := $(shell pwd | sed "s#.*/##" | tr [:upper:] [:lower:])
@@ -17,14 +18,18 @@ clean:
 fmt:
 	$(CC) fmt
 
-build: fmt
+build: fmt build-shaders
 	$(CC) build
 
-release: fmt
+release: fmt build-shaders
 	$(CC) build --release
 
 run:
 	./target/debug/${BIN}
+
+build-shaders:
+	$(GLSLC) shaders/simple_shader.frag -o shaders/simple_shader.frag.spv
+	$(GLSLC) shaders/simple_shader.vert -o shaders/simple_shader.vert.spv
 
 build-linux-image:
 	cp Cargo.toml docker
