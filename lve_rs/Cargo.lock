@@ -465,6 +465,7 @@ dependencies = [
  "anyhow",
  "ash",
  "ash-window",
+ "raw-window-handle",
  "winit",
 ]
 
