@@ -41,9 +41,6 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        unsafe {
-            self.pipeline.destroy(&self.device);
-            let _ = ManuallyDrop::new(&mut self.device);
-        }
+        let _ = ManuallyDrop::new(&mut self.device);
     }
 }
