@@ -1,11 +1,7 @@
+use crate::utils as lve_utils;
 use anyhow::Result;
 use ash::{extensions::ext as vk_ext, vk};
 use std::ffi::{c_void, CStr};
-
-pub struct ValidationLayers<'a> {
-    pub is_enabled: bool,
-    pub validation_layers: &'a [*const i8],
-}
 
 pub struct DebugUtilsMessenger {
     extension: vk_ext::DebugUtils,
@@ -80,8 +76,7 @@ impl DebugUtilsMessenger {
             .message_type(
                 vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
                     | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
-                    | vk::DebugUtilsMessageTypeFlagsEXT::DEVICE_ADDRESS_BINDING,
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE, // | vk::DebugUtilsMessageTypeFlagsEXT::DEVICE_ADDRESS_BINDING,
             )
             .pfn_user_callback(Some(debug_callback))
             .build()
@@ -90,9 +85,11 @@ impl DebugUtilsMessenger {
 
 impl Drop for DebugUtilsMessenger {
     fn drop(&mut self) {
-        unsafe {
-            self.extension
-                .destroy_debug_utils_messenger(self.debug_utils_messenger, None)
-        };
+        if !lve_utils::is_release_build() {
+            unsafe {
+                self.extension
+                    .destroy_debug_utils_messenger(self.debug_utils_messenger, None)
+            };
+        }
     }
 }

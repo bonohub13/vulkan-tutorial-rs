@@ -4,7 +4,7 @@ mod pipeline;
 mod surface;
 mod window;
 
-pub use debug::{DebugUtilsMessenger, ValidationLayers};
+pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
 pub use pipeline::Pipeline;
 pub use surface::{Surface, SwapChainSupportDetails};
@@ -12,6 +12,17 @@ pub use window::Window;
 
 use ash::vk;
 use std::ffi::CStr;
+
+mod utils {
+    use std::env;
+
+    pub fn is_release_build() -> bool {
+        match env::var("PROFILE") {
+            Ok(profile) => profile == "release",
+            Err(_) => false,
+        }
+    }
+}
 
 pub struct ApplicationInfo<'a> {
     pub name: &'a CStr,

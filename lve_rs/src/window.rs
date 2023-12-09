@@ -28,6 +28,14 @@ impl Window {
         &self.window
     }
 
+    pub fn create_surface(
+        &self,
+        entry: &ash::Entry,
+        instance: &ash::Instance,
+    ) -> Result<crate::Surface> {
+        crate::Surface::new(self, entry, instance)
+    }
+
     /* --- Helper functions --- */
     fn init_window<T>(
         event_loop: &EventLoop<T>,

@@ -1,7 +1,8 @@
+use crate::utils as lve_utils;
 use anyhow::{bail, Context, Result};
 use ash::{extensions::khr as vk_khr, vk};
 use raw_window_handle::HasRawDisplayHandle;
-use std::{collections::HashSet, ffi::CStr};
+use std::{collections::HashSet, ffi::CStr, mem::ManuallyDrop};
 
 pub struct QueryFamilyIndices {
     pub graphics_family: Option<u32>,
@@ -43,24 +44,22 @@ impl QueryFamilyIndices {
 }
 
 impl Device {
-    const ENABLE_VALIDATION_LAYERS: crate::ValidationLayers<'static> = crate::ValidationLayers {
-        is_enabled: true,
-        validation_layers: &[unsafe {
-            CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0")
-        }
-        .as_ptr()],
-    };
+    const VALIDATION_LAYERS: [*const i8; 1] =
+        [
+            unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") }
+                .as_ptr(),
+        ];
     const DEVICE_EXTENSIONS: [*const i8; 1] = [vk_khr::Swapchain::name().as_ptr()];
 
     pub fn new(window: &crate::Window, app_info: &crate::ApplicationInfo) -> Result<Self> {
         let entry = unsafe { ash::Entry::load() }?;
         let instance = Self::create_instance(window, &entry, app_info)?;
-        let debug_messenger = if Self::ENABLE_VALIDATION_LAYERS.is_enabled {
+        let debug_messenger = if !lve_utils::is_release_build() {
             crate::DebugUtilsMessenger::new(&entry, &instance)?
         } else {
             crate::DebugUtilsMessenger::null(&entry, &instance)
         };
-        let surface = crate::Surface::new(window, &entry, &instance)?;
+        let surface = window.create_surface(&entry, &instance)?;
         let physical_device = Self::pick_physical_device(&instance, &surface)?;
         let (device, graphics_queue, present_queue) =
             Self::create_device(&instance, &surface, &physical_device)?;
@@ -341,9 +340,7 @@ impl Device {
         entry: &ash::Entry,
         app_info: &crate::ApplicationInfo,
     ) -> Result<ash::Instance> {
-        if Self::ENABLE_VALIDATION_LAYERS.is_enabled
-            && !Self::check_validation_layer_support(entry)?
-        {
+        if !lve_utils::is_release_build() && !Self::check_validation_layer_support(entry)? {
             bail!("Requested validation layers not available");
         }
 
@@ -355,11 +352,11 @@ impl Device {
                 .engine_version(app_info.engine_version)
                 .api_version(app_info.api_version);
             let extensions = Self::get_required_extensions(window)?;
-            let layers = Self::ENABLE_VALIDATION_LAYERS.validation_layers.to_vec();
+            let layers = Self::VALIDATION_LAYERS.to_vec();
             let mut debug_create_info =
                 crate::DebugUtilsMessenger::populate_debug_message_create_info();
 
-            let create_info = if Self::ENABLE_VALIDATION_LAYERS.is_enabled {
+            let create_info = if !lve_utils::is_release_build() {
                 vk::InstanceCreateInfo::builder()
                     .application_info(&app_info)
                     .enabled_extension_names(&extensions)
@@ -514,7 +511,7 @@ impl Device {
             ash_window::enumerate_required_extensions(window.window().raw_display_handle())?
                 .to_vec();
 
-        if Self::ENABLE_VALIDATION_LAYERS.is_enabled {
+        if !lve_utils::is_release_build() {
             extensions.push(crate::DebugUtilsMessenger::extension_name().as_ptr());
         }
 
@@ -522,8 +519,7 @@ impl Device {
     }
 
     fn check_validation_layer_support(entry: &ash::Entry) -> Result<bool> {
-        let validation_layers = Self::ENABLE_VALIDATION_LAYERS
-            .validation_layers
+        let validation_layers = Self::VALIDATION_LAYERS
             .iter()
             .map(|layer| unsafe { CStr::from_ptr(*layer) })
             .collect::<Vec<_>>();
@@ -626,5 +622,23 @@ impl Device {
                 .count();
 
         Ok(required_extensions_available == required_extensions.len())
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_command_pool(self.command_pool, None);
+            self.device.destroy_device(None);
+        }
+        ManuallyDrop::new(&mut self.surface);
+
+        if !lve_utils::is_release_build() {
+            ManuallyDrop::new(&mut self.debug_messenger);
+        }
+
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
     }
 }

@@ -19,9 +19,16 @@ fmt:
 	$(CC) fmt
 
 build: fmt build-shaders
+	(cd lve_rs && $(CC) build)
 	$(CC) build
 
+# Does not work inside docker containers!
+build-frozen: fmt build-shaders
+	(cd lve_rs && $(CC) build --frozen)
+	$(CC) build --frozen
+
 release: fmt build-shaders
+	(cd lve_rs && $(CC) build --release)
 	$(CC) build --release
 
 run:
