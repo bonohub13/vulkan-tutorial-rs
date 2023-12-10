@@ -54,7 +54,7 @@ impl Device {
     pub fn new(window: &crate::Window, app_info: &crate::ApplicationInfo) -> Result<Self> {
         let entry = unsafe { ash::Entry::load() }?;
         let instance = Self::create_instance(window, &entry, app_info)?;
-        let debug_messenger = if !lve_utils::is_release_build() {
+        let debug_messenger = if lve_utils::is_debug_build() {
             crate::DebugUtilsMessenger::new(&entry, &instance)?
         } else {
             crate::DebugUtilsMessenger::null(&entry, &instance)
@@ -340,7 +340,7 @@ impl Device {
         entry: &ash::Entry,
         app_info: &crate::ApplicationInfo,
     ) -> Result<ash::Instance> {
-        if !lve_utils::is_release_build() && !Self::check_validation_layer_support(entry)? {
+        if lve_utils::is_debug_build() && !Self::check_validation_layer_support(entry)? {
             bail!("Requested validation layers not available");
         }
 
@@ -356,7 +356,7 @@ impl Device {
             let mut debug_create_info =
                 crate::DebugUtilsMessenger::populate_debug_message_create_info();
 
-            let create_info = if !lve_utils::is_release_build() {
+            let create_info = if lve_utils::is_debug_build() {
                 vk::InstanceCreateInfo::builder()
                     .application_info(&app_info)
                     .enabled_extension_names(&extensions)
@@ -511,7 +511,7 @@ impl Device {
             ash_window::enumerate_required_extensions(window.window().raw_display_handle())?
                 .to_vec();
 
-        if !lve_utils::is_release_build() {
+        if lve_utils::is_debug_build() {
             extensions.push(crate::DebugUtilsMessenger::extension_name().as_ptr());
         }
 
@@ -519,15 +519,24 @@ impl Device {
     }
 
     fn check_validation_layer_support(entry: &ash::Entry) -> Result<bool> {
+        println!("Requested validation layers:");
         let validation_layers = Self::VALIDATION_LAYERS
             .iter()
-            .map(|layer| unsafe { CStr::from_ptr(*layer) })
+            .map(|layer| {
+                let layer_name = unsafe { CStr::from_ptr(*layer) };
+
+                println!("\t{:?}", layer_name);
+
+                layer_name
+            })
             .collect::<Vec<_>>();
+        println!("Available layers:");
         let layers_found = entry
             .enumerate_instance_layer_properties()?
             .iter()
             .filter(|layer| {
-                let layer_name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
+                let layer_name = unsafe { CStr::from_ptr((**layer).layer_name.as_ptr()) };
+                println!("\t{:?}", layer_name);
 
                 validation_layers.contains(&layer_name)
             })
@@ -633,7 +642,7 @@ impl Drop for Device {
         }
         ManuallyDrop::new(&mut self.surface);
 
-        if !lve_utils::is_release_build() {
+        if lve_utils::is_debug_build() {
             ManuallyDrop::new(&mut self.debug_messenger);
         }
 

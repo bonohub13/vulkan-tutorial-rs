@@ -14,13 +14,9 @@ use ash::vk;
 use std::ffi::CStr;
 
 mod utils {
-    use std::env;
-
-    pub fn is_release_build() -> bool {
-        match env::var("PROFILE") {
-            Ok(profile) => profile == "release",
-            Err(_) => false,
-        }
+    #[inline]
+    pub fn is_debug_build() -> bool {
+        cfg!(debug_assertions)
     }
 }
 
