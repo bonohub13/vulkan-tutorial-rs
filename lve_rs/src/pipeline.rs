@@ -46,6 +46,15 @@ impl Pipeline {
         })
     }
 
+    #[inline]
+    pub unsafe fn bind(&self, device: &lve_rs::Device, command_buffer: &vk::CommandBuffer) {
+        device.device().cmd_bind_pipeline(
+            *command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.graphics_pipeline,
+        )
+    }
+
     pub fn default_pipeline_config_info(width: u32, height: u32) -> PipelineConfigInfo {
         PipelineConfigInfo {
             viewport: vk::Viewport {
@@ -72,19 +81,35 @@ impl Pipeline {
                 .cull_mode(vk::CullModeFlags::NONE)
                 .front_face(vk::FrontFace::CLOCKWISE)
                 .depth_bias_enable(false)
+                .depth_bias_constant_factor(0.0)
+                .depth_bias_clamp(0.0)
+                .depth_bias_slope_factor(0.0)
                 .build(),
             multisample_info: vk::PipelineMultisampleStateCreateInfo::builder()
                 .sample_shading_enable(false)
                 .rasterization_samples(vk::SampleCountFlags::TYPE_1)
+                .min_sample_shading(1.0)
+                .sample_mask(&[])
+                .alpha_to_coverage_enable(false)
+                .alpha_to_one_enable(false)
                 .build(),
             color_blend_attachment: vk::PipelineColorBlendAttachmentState::builder()
                 .color_write_mask(vk::ColorComponentFlags::RGBA)
                 .blend_enable(false)
+                .src_color_blend_factor(vk::BlendFactor::ONE)
+                .dst_color_blend_factor(vk::BlendFactor::ZERO)
+                .color_blend_op(vk::BlendOp::ADD)
+                .src_alpha_blend_factor(vk::BlendFactor::ONE)
+                .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+                .alpha_blend_op(vk::BlendOp::ADD)
                 .build(),
             depth_stencil_info: vk::PipelineDepthStencilStateCreateInfo::builder()
                 .depth_test_enable(true)
                 .depth_write_enable(true)
+                .depth_compare_op(vk::CompareOp::LESS)
                 .depth_bounds_test_enable(false)
+                .min_depth_bounds(0.0)
+                .max_depth_bounds(1.0)
                 .stencil_test_enable(false)
                 .build(),
             pipeline_layout: vk::PipelineLayout::null(),

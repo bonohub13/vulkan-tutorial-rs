@@ -1,6 +1,6 @@
 mod app;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use app::App;
 use std::borrow::BorrowMut;
 use winit::{
@@ -11,9 +11,8 @@ use winit::{
 
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
-    let app = App::new(&event_loop)?;
-
-    event_loop
+    let mut app = App::new(&event_loop)?;
+    let result = event_loop
         .borrow_mut()
         .run_return(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -22,13 +21,26 @@ fn main() -> Result<()> {
                     ref event,
                     window_id,
                 } if window_id == app.window().id() => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::CloseRequested => {
+                        *control_flow = ControlFlow::Exit;
+                    }
                     _ => (),
                 },
-                Event::MainEventsCleared => app.run(),
+                Event::MainEventsCleared => app.draw_frame().unwrap_or_else(|e| {
+                    eprintln!("{:?}", e);
+                    *control_flow = ControlFlow::ExitWithCode(0x10);
+                }),
                 _ => (),
             }
+
+            unsafe { app.device_wait_idle() }.unwrap_or_else(|e| {
+                eprintln!("Device failed to wait idle!: {:?}", e);
+                *control_flow = ControlFlow::ExitWithCode(0x20);
+            });
         });
 
-    Ok(())
+    match result {
+        0 => Ok(()),
+        _ => bail!("Exit with status: {:0x}", result),
+    }
 }

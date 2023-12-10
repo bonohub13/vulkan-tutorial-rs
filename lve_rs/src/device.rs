@@ -92,6 +92,11 @@ impl Device {
     }
 
     #[inline]
+    pub fn entry(&self) -> &ash::Entry {
+        &self.entry
+    }
+
+    #[inline]
     pub fn instance(&self) -> &ash::Instance {
         &self.instance
     }

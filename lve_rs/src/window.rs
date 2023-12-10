@@ -31,11 +31,11 @@ impl Window {
     }
 
     #[inline]
-    pub fn extent(&self) -> vk::Extent2D {
-        vk::Extent2D {
-            width: self.width as u32,
-            height: self.height as u32,
-        }
+    pub fn extent(&self) -> Result<vk::Extent2D> {
+        Ok(vk::Extent2D {
+            width: self.width.try_into()?,
+            height: self.height.try_into()?,
+        })
     }
 
     pub fn create_surface(
