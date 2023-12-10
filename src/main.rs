@@ -3,6 +3,7 @@ mod app;
 use anyhow::{bail, Result};
 use app::App;
 use std::borrow::BorrowMut;
+use std::time;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -15,6 +16,8 @@ fn main() -> Result<()> {
     let result = event_loop
         .borrow_mut()
         .run_return(move |event, _, control_flow| {
+            let start_time = time::Instant::now();
+
             *control_flow = ControlFlow::Poll;
             match event {
                 Event::WindowEvent {
@@ -31,6 +34,19 @@ fn main() -> Result<()> {
                     *control_flow = ControlFlow::ExitWithCode(0x10);
                 }),
                 _ => (),
+            }
+
+            match *control_flow {
+                ControlFlow::Exit => (),
+                _ => {
+                    // Limit FPS (Frames per second) to around 144
+                    let elapsed_time =
+                        time::Instant::now().duration_since(start_time).as_micros() as u64;
+                    let wait_microsecond = (App::MILLISECONDS_PER_FRAME - elapsed_time).max(0);
+                    let new_inst = start_time + time::Duration::from_micros(wait_microsecond);
+
+                    *control_flow = ControlFlow::WaitUntil(new_inst);
+                }
             }
 
             unsafe { app.device_wait_idle() }.unwrap_or_else(|e| {

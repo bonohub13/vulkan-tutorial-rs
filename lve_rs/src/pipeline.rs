@@ -161,7 +161,11 @@ impl Pipeline {
                     .name(unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") })
                     .build(),
             ];
-            let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder();
+            let binding_descriptions = crate::Vertex::binding_descriptions();
+            let attribute_descriptions = crate::Vertex::attribute_descriptions();
+            let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
+                .vertex_attribute_descriptions(&attribute_descriptions)
+                .vertex_binding_descriptions(&binding_descriptions);
             let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
                 .viewports(std::slice::from_ref(&config_info.viewport))
                 .scissors(std::slice::from_ref(&config_info.scissor));

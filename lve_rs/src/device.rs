@@ -189,7 +189,7 @@ impl Device {
         Ok(format)
     }
 
-    pub fn create_buffers(
+    pub fn create_buffer(
         &self,
         size: vk::DeviceSize,
         usage: vk::BufferUsageFlags,

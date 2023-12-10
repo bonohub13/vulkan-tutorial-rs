@@ -1,5 +1,6 @@
 mod debug;
 mod device;
+mod model;
 mod pipeline;
 mod surface;
 mod swap_chain;
@@ -7,10 +8,13 @@ mod window;
 
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
+pub use model::{Model, Vertex};
 pub use pipeline::Pipeline;
 pub use surface::{Surface, SwapChainSupportDetails};
 pub use swap_chain::SwapChain;
 pub use window::Window;
+
+extern crate nalgebra_glm as glm;
 
 use ash::vk;
 use std::ffi::CStr;

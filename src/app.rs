@@ -9,19 +9,23 @@ pub struct App {
     pipeline: Box<lve_rs::Pipeline>,
     pipeline_layout: vk::PipelineLayout,
     command_buffers: Vec<vk::CommandBuffer>,
+    model: Box<lve_rs::Model>,
 }
 
 impl App {
     pub const WIDTH: i32 = 800;
     pub const HEIGHT: i32 = 600;
+    pub const MILLISECONDS_PER_FRAME: u64 = ((1_000_000 / 144) / 100 + 2) * 100;
 
     pub fn new<T>(event_loop: &EventLoop<T>) -> Result<Self> {
         let window = lve_rs::Window::new(event_loop, Self::WIDTH, Self::HEIGHT, "Hello Vulkan!")?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
         let swap_chain = lve_rs::SwapChain::new(&device, window.extent()?)?;
+        let model = Self::load_models(&device)?;
         let pipeline_layout = Self::create_pipeline_layout(&device)?;
         let pipeline = Self::create_pipeline(&device, &swap_chain, &pipeline_layout)?;
-        let command_buffers = Self::create_command_buffers(&device, &swap_chain, &pipeline)?;
+        let command_buffers =
+            Self::create_command_buffers(&device, &swap_chain, &pipeline, &model)?;
 
         Ok(Self {
             window,
@@ -30,6 +34,7 @@ impl App {
             pipeline,
             pipeline_layout,
             command_buffers,
+            model,
         })
     }
 
@@ -60,9 +65,21 @@ impl App {
 
     #[inline]
     pub unsafe fn device_wait_idle(&self) -> Result<()> {
-        println!("Device waiting at idle");
-
         Ok(self.device.device().device_wait_idle()?)
+    }
+
+    fn load_models(device: &lve_rs::Device) -> Result<Box<lve_rs::Model>> {
+        let mut vertices = vec![];
+
+        lve_rs::Vertex::serpinski(
+            &mut vertices,
+            &lve_rs::Vertex::new(&[-0.5f32, 0.5f32]),
+            &lve_rs::Vertex::new(&[0.5f32, 0.5f32]),
+            &lve_rs::Vertex::new(&[0.0f32, -0.5f32]),
+            7,
+        );
+
+        Ok(Box::new(lve_rs::Model::new(device, &vertices)?))
     }
 
     fn create_pipeline_layout(device: &lve_rs::Device) -> Result<vk::PipelineLayout> {
@@ -98,6 +115,7 @@ impl App {
         device: &lve_rs::Device,
         swap_chain: &lve_rs::SwapChain,
         pipeline: &lve_rs::Pipeline,
+        model: &lve_rs::Model,
     ) -> Result<Vec<vk::CommandBuffer>> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -141,7 +159,9 @@ impl App {
                     vk::SubpassContents::INLINE,
                 );
                 pipeline.bind(device, command_buffer);
-                device.device().cmd_draw(*command_buffer, 3, 1, 0, 0);
+                model.bind(device, command_buffer);
+                model.draw(device, command_buffer);
+
                 device.device().cmd_end_render_pass(*command_buffer);
             }
             unsafe { device.device().end_command_buffer(*command_buffer) }?;
@@ -153,29 +173,19 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        println!("Drop called in App");
         unsafe {
-            println!("Dropping CommandBuffers");
+            self.model.destroy(&self.device);
             if self.command_buffers.len() > 0 {
                 self.device
                     .device()
                     .free_command_buffers(*self.device.command_pool(), &self.command_buffers);
             }
-            println!("Dropped CommandBuffers");
-            println!("Dropping PipelineLayout");
             self.device
                 .device()
                 .destroy_pipeline_layout(self.pipeline_layout, None);
-            println!("Dropped PipelineLayout");
-            println!("Dropping Pipeline");
             self.pipeline.destroy(&self.device);
-            println!("Dropped Pipeline");
-            println!("Dropping SwapChain");
             self.swap_chain.destroy(&self.device);
-            println!("Dropped SwapChain");
-            println!("Dropping Device");
             self.device.destroy();
-            println!("Dropped Device");
         }
     }
 }
