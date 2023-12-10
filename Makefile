@@ -13,6 +13,7 @@ all: build run
 
 # Rust code
 clean:
+	(cd lve_rs && $(CC) clean)
 	$(CC) clean
 
 fmt:
