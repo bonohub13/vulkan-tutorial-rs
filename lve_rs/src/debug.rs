@@ -85,7 +85,7 @@ impl DebugUtilsMessenger {
 
 impl Drop for DebugUtilsMessenger {
     fn drop(&mut self) {
-        if !lve_utils::is_release_build() {
+        if lve_utils::is_debug_build() {
             unsafe {
                 self.extension
                     .destroy_debug_utils_messenger(self.debug_utils_messenger, None)

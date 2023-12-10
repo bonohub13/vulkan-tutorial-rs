@@ -15,7 +15,7 @@ use std::ffi::CStr;
 
 mod utils {
     #[inline]
-    pub fn is_release_build() -> bool {
+    pub fn is_debug_build() -> bool {
         cfg!(debug_assertions)
     }
 }
