@@ -33,6 +33,11 @@ impl Surface {
     }
 
     #[inline]
+    pub unsafe fn destroy_surface(&self) {
+        self.extension.destroy_surface(self.surface, None);
+    }
+
+    #[inline]
     pub const fn extension_name() -> &'static CStr {
         vk_khr::Surface::name()
     }
@@ -95,13 +100,5 @@ impl Surface {
             formats: self.get_physical_device_surface_formats(physical_device)?,
             present_modes: self.get_physical_device_surface_present_modes(physical_device)?,
         })
-    }
-}
-
-impl Drop for Surface {
-    fn drop(&mut self) {
-        unsafe {
-            self.extension.destroy_surface(self.surface, None);
-        }
     }
 }

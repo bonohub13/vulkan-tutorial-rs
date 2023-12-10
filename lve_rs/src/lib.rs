@@ -2,12 +2,14 @@ mod debug;
 mod device;
 mod pipeline;
 mod surface;
+mod swap_chain;
 mod window;
 
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
 pub use pipeline::Pipeline;
 pub use surface::{Surface, SwapChainSupportDetails};
+pub use swap_chain::SwapChain;
 pub use window::Window;
 
 use ash::vk;

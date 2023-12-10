@@ -9,3 +9,4 @@ edition = "2021"
 anyhow = "1.0.75"
 winit = "0.28.0"
 lve_rs = { path = "./lve_rs" }
+ash = "0.37.3"

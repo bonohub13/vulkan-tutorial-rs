@@ -62,6 +62,16 @@ impl DebugUtilsMessenger {
     }
 
     #[inline]
+    pub unsafe fn destroy_debug_utils_messenger(&self) {
+        if lve_utils::is_debug_build() {
+            unsafe {
+                self.extension
+                    .destroy_debug_utils_messenger(self.debug_utils_messenger, None)
+            };
+        }
+    }
+
+    #[inline]
     pub const fn extension_name() -> &'static CStr {
         vk_ext::DebugUtils::name()
     }
@@ -80,16 +90,5 @@ impl DebugUtilsMessenger {
             )
             .pfn_user_callback(Some(debug_callback))
             .build()
-    }
-}
-
-impl Drop for DebugUtilsMessenger {
-    fn drop(&mut self) {
-        if lve_utils::is_debug_build() {
-            unsafe {
-                self.extension
-                    .destroy_debug_utils_messenger(self.debug_utils_messenger, None)
-            };
-        }
     }
 }

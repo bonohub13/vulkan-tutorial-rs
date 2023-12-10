@@ -22,6 +22,7 @@ pub struct PipelineConfigInfo {
     pub render_pass: vk::RenderPass,
     pub subpass: u32,
 }
+
 pub struct Pipeline {
     graphics_pipeline: vk::Pipeline,
     vert_shader_module: vk::ShaderModule,
@@ -35,11 +36,14 @@ impl Pipeline {
         frag_file_path: &str,
         config_info: &PipelineConfigInfo,
     ) -> Result<Self> {
-        Self::create_graphics_pipeline(device, vert_file_path, frag_file_path, config_info)?;
+        let (graphics_pipeline, vert_shader_module, frag_shader_module) =
+            Self::create_graphics_pipeline(device, vert_file_path, frag_file_path, config_info)?;
 
-        // Ok(Self {});
-
-        todo!();
+        Ok(Self {
+            graphics_pipeline,
+            vert_shader_module,
+            frag_shader_module,
+        })
     }
 
     pub fn default_pipeline_config_info(width: u32, height: u32) -> PipelineConfigInfo {
@@ -147,6 +151,7 @@ impl Pipeline {
                 .input_assembly_state(&config_info.input_assembly_info)
                 .viewport_state(&viewport_info)
                 .rasterization_state(&config_info.rasterization_info)
+                .multisample_state(&config_info.multisample_info)
                 .color_blend_state(&color_blend_info)
                 .depth_stencil_state(&config_info.depth_stencil_info)
                 .layout(config_info.pipeline_layout)

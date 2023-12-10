@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ash::vk;
 use winit::{
     dpi::LogicalSize,
     event_loop::EventLoop,
@@ -24,8 +25,17 @@ impl Window {
         })
     }
 
+    #[inline]
     pub fn window(&self) -> &window::Window {
         &self.window
+    }
+
+    #[inline]
+    pub fn extent(&self) -> vk::Extent2D {
+        vk::Extent2D {
+            width: self.width as u32,
+            height: self.height as u32,
+        }
     }
 
     pub fn create_surface(

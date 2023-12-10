@@ -2,7 +2,7 @@ use crate::utils as lve_utils;
 use anyhow::{bail, Context, Result};
 use ash::{extensions::khr as vk_khr, vk};
 use raw_window_handle::HasRawDisplayHandle;
-use std::{collections::HashSet, ffi::CStr, mem::ManuallyDrop};
+use std::{collections::HashSet, ffi::CStr};
 
 pub struct QueryFamilyIndices {
     pub graphics_family: Option<u32>,
@@ -77,6 +77,18 @@ impl Device {
             present_queue,
             command_pool,
         })
+    }
+
+    pub unsafe fn destroy(&self) {
+        self.device.destroy_command_pool(self.command_pool, None);
+        self.device.destroy_device(None);
+        self.surface.destroy_surface();
+
+        if lve_utils::is_debug_build() {
+            self.debug_messenger.destroy_debug_utils_messenger();
+        }
+
+        self.instance.destroy_instance(None);
     }
 
     #[inline]
@@ -631,23 +643,5 @@ impl Device {
                 .count();
 
         Ok(required_extensions_available == required_extensions.len())
-    }
-}
-
-impl Drop for Device {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_command_pool(self.command_pool, None);
-            self.device.destroy_device(None);
-        }
-        ManuallyDrop::new(&mut self.surface);
-
-        if lve_utils::is_debug_build() {
-            ManuallyDrop::new(&mut self.debug_messenger);
-        }
-
-        unsafe {
-            self.instance.destroy_instance(None);
-        }
     }
 }
