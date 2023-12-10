@@ -100,6 +100,15 @@ impl Pipeline {
         frag_file_path: &str,
         config_info: &PipelineConfigInfo,
     ) -> Result<(vk::Pipeline, vk::ShaderModule, vk::ShaderModule)> {
+        assert!(
+            config_info.pipeline_layout != vk::PipelineLayout::null(),
+            "Cannot create graphics pipeline: No pipeline_layout provided in config_info"
+        );
+        assert!(
+            config_info.render_pass != vk::RenderPass::null(),
+            "Cannot create graphics pipeline: No render_pass provided in config_info"
+        );
+
         let vert_shader_module = {
             let mut vert_code = Self::read_file(vert_file_path)?;
 
