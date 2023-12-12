@@ -12,7 +12,7 @@ use winit::{
 
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
-    let mut app = App::new(&event_loop)?;
+    let mut app = App::new(&event_loop, None, None)?;
     let result = event_loop
         .borrow_mut()
         .run_return(move |event, _, control_flow| {

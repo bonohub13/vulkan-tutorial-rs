@@ -13,12 +13,29 @@ pub struct App {
 }
 
 impl App {
-    pub const WIDTH: i32 = 800;
-    pub const HEIGHT: i32 = 600;
-    pub const MILLISECONDS_PER_FRAME: u64 = ((1_000_000 / 144) / 100 + 2) * 100;
+    pub const WIDTH: i32 = 1280;
+    pub const HEIGHT: i32 = 800;
+    pub const FRAMES_PER_SECOND_LIMIT: u64 = 144;
+    pub const MICROSECONDS_IN_SECOND: u64 = 1_000_000;
+    pub const MILLISECONDS_PER_FRAME: u64 =
+        ((Self::MICROSECONDS_IN_SECOND / Self::FRAMES_PER_SECOND_LIMIT) / 100 + 1) * 100;
 
-    pub fn new<T>(event_loop: &EventLoop<T>) -> Result<Self> {
-        let window = lve_rs::Window::new(event_loop, Self::WIDTH, Self::HEIGHT, "Hello Vulkan!")?;
+    pub fn new<T>(
+        event_loop: &EventLoop<T>,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> Result<Self> {
+        let width = if let Some(width) = width {
+            width
+        } else {
+            Self::WIDTH
+        };
+        let height = if let Some(height) = height {
+            height
+        } else {
+            Self::HEIGHT
+        };
+        let window = lve_rs::Window::new(event_loop, width, height, "Hello Vulkan!")?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
         let swap_chain = lve_rs::SwapChain::new(&device, window.extent()?)?;
         let model = Self::load_models(&device)?;
@@ -73,10 +90,10 @@ impl App {
 
         lve_rs::Vertex::serpinski(
             &mut vertices,
-            &lve_rs::Vertex::new(&[-0.5f32, 0.5f32]),
-            &lve_rs::Vertex::new(&[0.5f32, 0.5f32]),
-            &lve_rs::Vertex::new(&[0.0f32, -0.5f32]),
-            7,
+            &lve_rs::Vertex::new(&[0.0f32, -0.95f32]),
+            &lve_rs::Vertex::new(&[0.95f32, 0.95f32]),
+            &lve_rs::Vertex::new(&[-0.95f32, 0.95f32]),
+            8,
         );
 
         Ok(Box::new(lve_rs::Model::new(device, &vertices)?))
