@@ -90,9 +90,9 @@ impl App {
 
         lve_rs::Vertex::serpinski(
             &mut vertices,
-            &lve_rs::Vertex::new(&[0.0f32, -0.95f32]),
-            &lve_rs::Vertex::new(&[0.95f32, 0.95f32]),
-            &lve_rs::Vertex::new(&[-0.95f32, 0.95f32]),
+            &lve_rs::Vertex::new(&[0.0f32, -0.95f32], &[1.0, 0., 0.]),
+            &lve_rs::Vertex::new(&[0.95f32, 0.95f32], &[0., 1., 0.]),
+            &lve_rs::Vertex::new(&[-0.95f32, 0.95f32], &[0., 0., 1.]),
             8,
         );
 

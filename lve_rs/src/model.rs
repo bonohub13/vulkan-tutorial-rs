@@ -1,10 +1,12 @@
 use anyhow::Result;
 use ash::vk;
+use offset::offset_of;
 use std::mem::{align_of, size_of, size_of_val};
 
 #[derive(Clone, Copy)]
 pub struct Vertex {
     pub position: glm::Vec2,
+    pub color: glm::Vec3,
 }
 
 pub struct Model {
@@ -14,9 +16,10 @@ pub struct Model {
 }
 
 impl Vertex {
-    pub fn new(position: &[f32; 2]) -> Self {
+    pub fn new(position: &[f32; 2], color: &[f32; 3]) -> Self {
         Self {
-            position: glm::vec2(position[0], position[1]),
+            position: glm::Vec2::from_row_slice(position),
+            color: glm::Vec3::from_row_slice(color),
         }
     }
 
@@ -28,12 +31,15 @@ impl Vertex {
         } else {
             let top_right = Self {
                 position: 0.5f32 * (top.position + right.position),
+                color: 0.5f32 * (top.color + right.color),
             };
             let right_left = Self {
                 position: 0.5f32 * (right.position + left.position),
+                color: 0.5f32 * (right.color + left.color),
             };
             let left_top = Self {
                 position: 0.5f32 * (left.position + top.position),
+                color: 0.5f32 * (left.color + top.color),
             };
 
             Self::serpinski(vertices, &left_top, &right_left, &left, depth - 1);
@@ -51,12 +57,20 @@ impl Vertex {
     }
 
     pub fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
-        vec![vk::VertexInputAttributeDescription::builder()
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32_SFLOAT)
-            .offset(0)
-            .build()]
+        vec![
+            vk::VertexInputAttributeDescription::builder()
+                .location(0)
+                .binding(0)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(offset_of!(Vertex::position).into())
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .location(1)
+                .binding(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(offset_of!(Vertex::color).into())
+                .build(),
+        ]
     }
 }
 
