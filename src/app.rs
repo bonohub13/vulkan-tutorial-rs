@@ -1,11 +1,14 @@
 use anyhow::{bail, Result};
 use ash::vk;
-use winit::{event_loop::EventLoop, window::Window};
+use winit::{
+    event_loop::{ControlFlow, EventLoop},
+    window::Window,
+};
 
 pub struct App {
     window: lve_rs::Window,
     device: lve_rs::Device,
-    swap_chain: lve_rs::SwapChain,
+    swap_chain: Box<lve_rs::SwapChain>,
     pipeline: Box<lve_rs::Pipeline>,
     pipeline_layout: vk::PipelineLayout,
     command_buffers: Vec<vk::CommandBuffer>,
@@ -37,12 +40,11 @@ impl App {
         };
         let window = lve_rs::Window::new(event_loop, width, height, "Hello Vulkan!")?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
-        let swap_chain = lve_rs::SwapChain::new(&device, window.extent()?)?;
         let model = Self::load_models(&device)?;
         let pipeline_layout = Self::create_pipeline_layout(&device)?;
-        let pipeline = Self::create_pipeline(&device, &swap_chain, &pipeline_layout)?;
-        let command_buffers =
-            Self::create_command_buffers(&device, &swap_chain, &pipeline, &model)?;
+        let (swap_chain, pipeline) =
+            Self::recreate_swap_chain(&window, &device, &pipeline_layout, None)?;
+        let command_buffers = Self::create_command_buffers(&device, &swap_chain)?;
 
         Ok(Self {
             window,
@@ -60,22 +62,82 @@ impl App {
         &self.window.window()
     }
 
-    pub fn draw_frame(&mut self) -> Result<()> {
-        let (image_index, result) = self.swap_chain.acquire_next_image(&self.device)?;
+    #[inline]
+    pub fn window_resized(&mut self, width: i32, height: i32) {
+        self.window.framebuffer_resized(width, height);
+    }
 
-        if result {
-            bail!("Failed to acquire swap chain image!");
-        }
+    pub fn draw_frame(&mut self, control_flow: Option<&mut ControlFlow>) -> Result<()> {
+        let (image_index, _) = match self.swap_chain.acquire_next_image(&self.device) {
+            Ok((image_index, result)) => {
+                if result {
+                    unsafe { self.device_wait_idle() }.unwrap();
+                    unsafe {
+                        self.pipeline.destroy(&self.device);
+                        self.swap_chain.destroy(&self.device);
+                    }
+                    (self.swap_chain, self.pipeline) = Self::recreate_swap_chain(
+                        &self.window,
+                        &self.device,
+                        &self.pipeline_layout,
+                        control_flow,
+                    )?;
 
-        let result = self.swap_chain.submit_command_buffers(
+                    return Ok(());
+                }
+
+                Ok((image_index, result)) as Result<(usize, bool)>
+            }
+            Err(_) => bail!("Failed to acquire swap chain image!"),
+        }?;
+
+        self.record_command_buffer(image_index)?;
+
+        match self.swap_chain.submit_command_buffers(
             &self.device,
             &self.command_buffers[image_index],
             image_index,
-        )?;
+        ) {
+            Ok(window_resized) => {
+                if window_resized || self.window.was_window_resized() {
+                    unsafe { self.device_wait_idle() }.unwrap();
+                    unsafe {
+                        self.pipeline.destroy(&self.device);
+                        self.swap_chain.destroy(&self.device);
+                    }
+                    self.window.reset_window_resized_flag();
+                    (self.swap_chain, self.pipeline) = Self::recreate_swap_chain(
+                        &self.window,
+                        &self.device,
+                        &self.pipeline_layout,
+                        control_flow,
+                    )?;
 
-        if result {
-            bail!("Failed to present swap chain image!")
-        }
+                    return Ok(());
+                }
+            }
+
+            Err(_) => {
+                if self.window.was_window_resized() {
+                    unsafe { self.device_wait_idle() }.unwrap();
+                    unsafe {
+                        self.pipeline.destroy(&self.device);
+                        self.swap_chain.destroy(&self.device);
+                    }
+                    self.window.reset_window_resized_flag();
+                    (self.swap_chain, self.pipeline) = Self::recreate_swap_chain(
+                        &self.window,
+                        &self.device,
+                        &self.pipeline_layout,
+                        control_flow,
+                    )?;
+
+                    return Ok(());
+                } else {
+                    bail!("Failed to present swap chain image!")
+                }
+            }
+        };
 
         Ok(())
     }
@@ -128,17 +190,44 @@ impl App {
         )?))
     }
 
+    fn recreate_swap_chain(
+        window: &lve_rs::Window,
+        device: &lve_rs::Device,
+        pipeline_layout: &vk::PipelineLayout,
+        mut control_flow: Option<&mut ControlFlow>,
+    ) -> Result<(Box<lve_rs::SwapChain>, Box<lve_rs::Pipeline>)> {
+        let device_ref = device.device();
+        let mut extent = window.extent()?;
+
+        while extent.width == 0 || extent.height == 0 {
+            extent = window.extent()?;
+            if let Some(ref mut control_flow_mut_ref) = control_flow {
+                **control_flow_mut_ref = ControlFlow::Wait;
+            }
+        }
+        // Wait until current swap chain is out of use
+        unsafe { device_ref.device_wait_idle() }?;
+
+        let swap_chain = lve_rs::SwapChain::new(device, extent)?;
+        let pipeline = Self::create_pipeline(device, &swap_chain, pipeline_layout)?;
+
+        Ok((Box::new(swap_chain), pipeline))
+    }
+
     fn create_command_buffers(
         device: &lve_rs::Device,
         swap_chain: &lve_rs::SwapChain,
-        pipeline: &lve_rs::Pipeline,
-        model: &lve_rs::Model,
     ) -> Result<Vec<vk::CommandBuffer>> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_pool(*device.command_pool())
             .command_buffer_count(swap_chain.image_count().try_into()?);
         let command_buffers = unsafe { device.device().allocate_command_buffers(&allocate_info) }?;
+
+        Ok(command_buffers)
+    }
+
+    fn record_command_buffer(&self, image_index: usize) -> Result<()> {
         let begin_info = vk::CommandBufferBeginInfo::builder();
         let clear_values = [
             vk::ClearValue {
@@ -153,38 +242,44 @@ impl App {
                     .build(),
             },
         ];
+        let render_pass_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(*self.swap_chain.render_pass())
+            .framebuffer(*self.swap_chain.framebuffer(image_index))
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: self.swap_chain.swap_chain_extent(),
+            })
+            .clear_values(&clear_values);
 
-        for (index, command_buffer) in command_buffers.iter().enumerate() {
-            let render_pass_info = vk::RenderPassBeginInfo::builder()
-                .render_pass(*swap_chain.render_pass())
-                .framebuffer(*swap_chain.framebuffer(index))
-                .render_area(vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: swap_chain.swap_chain_extent(),
-                })
-                .clear_values(&clear_values);
+        unsafe {
+            self.device
+                .device()
+                .begin_command_buffer(self.command_buffers[image_index], &begin_info)
+        }?;
+        unsafe {
+            self.device.device().cmd_begin_render_pass(
+                self.command_buffers[image_index],
+                &render_pass_info,
+                vk::SubpassContents::INLINE,
+            );
+            self.pipeline
+                .bind(&self.device, &self.command_buffers[image_index]);
+            self.model
+                .bind(&self.device, &self.command_buffers[image_index]);
+            self.model
+                .draw(&self.device, &self.command_buffers[image_index]);
 
-            unsafe {
-                device
-                    .device()
-                    .begin_command_buffer(*command_buffer, &begin_info)
-            }?;
-            unsafe {
-                device.device().cmd_begin_render_pass(
-                    *command_buffer,
-                    &render_pass_info,
-                    vk::SubpassContents::INLINE,
-                );
-                pipeline.bind(device, command_buffer);
-                model.bind(device, command_buffer);
-                model.draw(device, command_buffer);
-
-                device.device().cmd_end_render_pass(*command_buffer);
-            }
-            unsafe { device.device().end_command_buffer(*command_buffer) }?;
+            self.device
+                .device()
+                .cmd_end_render_pass(self.command_buffers[image_index]);
         }
+        unsafe {
+            self.device
+                .device()
+                .end_command_buffer(self.command_buffers[image_index])
+        }?;
 
-        Ok(command_buffers)
+        Ok(())
     }
 }
 

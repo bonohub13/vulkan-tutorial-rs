@@ -170,13 +170,22 @@ impl SwapChain {
         let fences = [self.in_flight_fences[self.current_frame]];
         unsafe { device.device().wait_for_fences(&fences, true, u64::MAX) }?;
 
-        let (image_index, result) = unsafe {
+        let (image_index, result) = match unsafe {
             self.extension.acquire_next_image(
                 self.swap_chain,
                 u64::MAX,
                 self.image_available_semaphores[self.current_frame],
                 vk::Fence::null(),
             )
+        } {
+            Ok((image_index, _)) => Ok((image_index, false)),
+            Err(err) => {
+                if err == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                    Ok((0, true))
+                } else {
+                    Err(err)
+                }
+            }
         }?;
 
         Ok((image_index as usize, result))
@@ -233,9 +242,18 @@ impl SwapChain {
                 .image_indices(&image_indices)
         };
 
-        let result = unsafe {
+        let result = match unsafe {
             self.extension
                 .queue_present(*device.present_queue(), &present_info)
+        } {
+            Ok(_) => Ok(false),
+            Err(err) => {
+                if err == vk::Result::ERROR_OUT_OF_DATE_KHR || err == vk::Result::SUBOPTIMAL_KHR {
+                    Ok(true)
+                } else {
+                    Err(err)
+                }
+            }
         }?;
 
         self.current_frame = (self.current_frame + 1) % (Self::MAX_FRAMES_IN_FLIGHT as usize);

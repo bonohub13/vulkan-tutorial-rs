@@ -27,25 +27,39 @@ fn main() -> Result<()> {
                     WindowEvent::CloseRequested => {
                         *control_flow = ControlFlow::Exit;
                     }
+                    WindowEvent::Resized(physical_size) => {
+                        println!(
+                            "window resized: ({}, {})",
+                            physical_size.width, physical_size.height
+                        );
+                        app.window_resized(physical_size.width as i32, physical_size.height as i32);
+                    }
                     _ => (),
                 },
-                Event::MainEventsCleared => app.draw_frame().unwrap_or_else(|e| {
-                    eprintln!("{:?}", e);
-                    *control_flow = ControlFlow::ExitWithCode(0x10);
-                }),
+                Event::RedrawRequested(_) => {}
+                Event::MainEventsCleared => {
+                    app.draw_frame(Some(control_flow)).unwrap_or_else(|e| {
+                        eprintln!("{:?}", e);
+                        *control_flow = ControlFlow::ExitWithCode(0x10);
+                    })
+                }
                 _ => (),
             }
 
             match *control_flow {
-                ControlFlow::Exit => (),
+                ControlFlow::Exit | ControlFlow::ExitWithCode(_) => {
+                    unsafe { app.device_wait_idle() }.unwrap()
+                }
                 _ => {
                     // Limit FPS (Frames per second) to around 144
                     let elapsed_time =
                         time::Instant::now().duration_since(start_time).as_micros() as u64;
-                    let wait_microsecond = (App::MILLISECONDS_PER_FRAME - elapsed_time).max(0);
-                    let new_inst = start_time + time::Duration::from_micros(wait_microsecond);
+                    if elapsed_time <= App::MILLISECONDS_PER_FRAME {
+                        let wait_microsecond = (App::MILLISECONDS_PER_FRAME - elapsed_time).max(0);
+                        let new_inst = start_time + time::Duration::from_micros(wait_microsecond);
 
-                    *control_flow = ControlFlow::WaitUntil(new_inst);
+                        *control_flow = ControlFlow::WaitUntil(new_inst);
+                    }
                 }
             }
 

@@ -11,6 +11,7 @@ pub struct Window {
     window_name: Box<str>,
     width: i32,
     height: i32,
+    framebuffer_resized: bool,
 }
 
 impl Window {
@@ -22,6 +23,7 @@ impl Window {
             window_name: Box::from(name),
             width,
             height,
+            framebuffer_resized: false,
         })
     }
 
@@ -38,12 +40,28 @@ impl Window {
         })
     }
 
+    #[inline]
+    pub fn was_window_resized(&self) -> bool {
+        self.framebuffer_resized
+    }
+
+    #[inline]
+    pub fn reset_window_resized_flag(&mut self) {
+        self.framebuffer_resized = false
+    }
+
     pub fn create_surface(
         &self,
         entry: &ash::Entry,
         instance: &ash::Instance,
     ) -> Result<crate::Surface> {
         crate::Surface::new(self, entry, instance)
+    }
+
+    pub fn framebuffer_resized(&mut self, width: i32, height: i32) {
+        self.framebuffer_resized = true;
+        self.width = width;
+        self.height = height;
     }
 
     /* --- Helper functions --- */
