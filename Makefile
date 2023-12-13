@@ -1,6 +1,8 @@
 SHELL := bash
 CC := $(shell which cargo)
 GLSLC := $(shell which glslc)
+TAR := $(shell which tar)
+PIGZ := $(shell which pigz)
 PWD := $(shell pwd)
 PROJECT_NAME := $(shell pwd | sed "s#.*/##")
 DOCKER_IMAGE_NAME := $(shell pwd | sed "s#.*/##" | tr [:upper:] [:lower:])
@@ -64,3 +66,10 @@ docker-run: docker-build run
 
 docker-run-release: docker-release
 	./target/release/${BIN}
+
+compress: clean
+	@cd ../ && ( \
+		[ -f ${PIGZ} ] \
+			&& $(TAR) --use-compress-program="pigz --best --recursive | pv" -cvf ${PROJECT_NAME}.tar.gz ${PROJECT_NAME} \
+			|| $(TAR) czvf vulkan-tutorial.tar.gz ${PROJECT_NAME} \
+	) 
