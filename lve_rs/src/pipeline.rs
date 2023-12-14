@@ -11,13 +11,17 @@ use std::{ffi::CStr, fs::File};
  */
 
 pub struct PipelineConfigInfo {
+    /*
     pub viewport: vk::Viewport,
     pub scissor: vk::Rect2D,
+    */
+    pub viewport_info: vk::PipelineViewportStateCreateInfo,
     pub input_assembly_info: vk::PipelineInputAssemblyStateCreateInfo,
     pub rasterization_info: vk::PipelineRasterizationStateCreateInfo,
     pub multisample_info: vk::PipelineMultisampleStateCreateInfo,
     pub color_blend_attachment: vk::PipelineColorBlendAttachmentState,
     pub depth_stencil_info: vk::PipelineDepthStencilStateCreateInfo,
+    pub dynamic_state_enables: Vec<vk::DynamicState>,
     pub pipeline_layout: vk::PipelineLayout,
     pub render_pass: vk::RenderPass,
     pub subpass: u32,
@@ -57,6 +61,7 @@ impl Pipeline {
 
     pub fn default_pipeline_config_info(width: u32, height: u32) -> PipelineConfigInfo {
         PipelineConfigInfo {
+            /*
             viewport: vk::Viewport {
                 x: 0.0f32,
                 y: 0.0f32,
@@ -69,6 +74,11 @@ impl Pipeline {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: vk::Extent2D { width, height },
             },
+            */
+            viewport_info: vk::PipelineViewportStateCreateInfo::builder()
+                .viewports(&[])
+                .scissors(&[])
+                .build(),
             input_assembly_info: vk::PipelineInputAssemblyStateCreateInfo::builder()
                 .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
                 .primitive_restart_enable(false)
@@ -112,6 +122,10 @@ impl Pipeline {
                 .max_depth_bounds(1.0)
                 .stencil_test_enable(false)
                 .build(),
+            dynamic_state_enables: vec![
+                vk::DynamicState::VIEWPORT_WITH_COUNT,
+                vk::DynamicState::SCISSOR_WITH_COUNT,
+            ],
             pipeline_layout: vk::PipelineLayout::null(),
             render_pass: vk::RenderPass::null(),
             subpass: 0,
@@ -166,23 +180,30 @@ impl Pipeline {
             let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
                 .vertex_attribute_descriptions(&attribute_descriptions)
                 .vertex_binding_descriptions(&binding_descriptions);
+            /*
             let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
                 .viewports(std::slice::from_ref(&config_info.viewport))
                 .scissors(std::slice::from_ref(&config_info.scissor));
+            */
             let color_blend_info = vk::PipelineColorBlendStateCreateInfo::builder()
                 .logic_op_enable(false)
                 .logic_op(vk::LogicOp::COPY)
                 .attachments(std::slice::from_ref(&config_info.color_blend_attachment))
                 .blend_constants([0.0f32, 0.0f32, 0.0f32, 0.0f32]);
+            let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::builder()
+                .dynamic_states(&config_info.dynamic_state_enables)
+                .flags(vk::PipelineDynamicStateCreateFlags::empty())
+                .build();
             let create_info = vk::GraphicsPipelineCreateInfo::builder()
                 .stages(&shader_stages)
                 .vertex_input_state(&vertex_input_info)
                 .input_assembly_state(&config_info.input_assembly_info)
-                .viewport_state(&viewport_info)
+                .viewport_state(&config_info.viewport_info)
                 .rasterization_state(&config_info.rasterization_info)
                 .multisample_state(&config_info.multisample_info)
                 .color_blend_state(&color_blend_info)
                 .depth_stencil_state(&config_info.depth_stencil_info)
+                .dynamic_state(&dynamic_state_info)
                 .layout(config_info.pipeline_layout)
                 .render_pass(config_info.render_pass)
                 .subpass(config_info.subpass)

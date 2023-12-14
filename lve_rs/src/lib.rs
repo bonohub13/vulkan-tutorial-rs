@@ -114,7 +114,7 @@ impl ApplicationInfo<'_> {
 
 impl Default for ApplicationInfo<'_> {
     fn default() -> Self {
-        Self::with_api_version_1_0(
+        Self::with_api_version_1_3(
             "Vulkan Engine",
             vk::make_api_version(0, 1, 0, 0),
             "No Engine",

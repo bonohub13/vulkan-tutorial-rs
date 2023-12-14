@@ -42,8 +42,14 @@ impl App {
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
         let model = Self::load_models(&device)?;
         let pipeline_layout = Self::create_pipeline_layout(&device)?;
-        let (swap_chain, pipeline) =
-            Self::recreate_swap_chain(&window, &device, &pipeline_layout, None)?;
+        let (swap_chain, pipeline) = Self::recreate_swap_chain(
+            &window,
+            &device,
+            &pipeline_layout,
+            &vk::SwapchainKHR::null(),
+            &mut vec![],
+            None,
+        )?;
         let command_buffers = Self::create_command_buffers(&device, &swap_chain)?;
 
         Ok(Self {
@@ -71,17 +77,20 @@ impl App {
         let (image_index, _) = match self.swap_chain.acquire_next_image(&self.device) {
             Ok((image_index, result)) => {
                 if result {
+                    let (swap_chain, pipeline) = Self::recreate_swap_chain(
+                        &self.window,
+                        &self.device,
+                        &self.pipeline_layout,
+                        self.swap_chain.swap_chain(),
+                        &mut self.command_buffers,
+                        control_flow,
+                    )?;
                     unsafe { self.device_wait_idle() }.unwrap();
                     unsafe {
                         self.pipeline.destroy(&self.device);
                         self.swap_chain.destroy(&self.device);
                     }
-                    (self.swap_chain, self.pipeline) = Self::recreate_swap_chain(
-                        &self.window,
-                        &self.device,
-                        &self.pipeline_layout,
-                        control_flow,
-                    )?;
+                    (self.swap_chain, self.pipeline) = (swap_chain, pipeline);
 
                     return Ok(());
                 }
@@ -100,18 +109,21 @@ impl App {
         ) {
             Ok(window_resized) => {
                 if window_resized || self.window.was_window_resized() {
+                    self.window.reset_window_resized_flag();
+                    let (swap_chain, pipeline) = Self::recreate_swap_chain(
+                        &self.window,
+                        &self.device,
+                        &self.pipeline_layout,
+                        self.swap_chain.swap_chain(),
+                        &mut self.command_buffers,
+                        control_flow,
+                    )?;
                     unsafe { self.device_wait_idle() }.unwrap();
                     unsafe {
                         self.pipeline.destroy(&self.device);
                         self.swap_chain.destroy(&self.device);
                     }
-                    self.window.reset_window_resized_flag();
-                    (self.swap_chain, self.pipeline) = Self::recreate_swap_chain(
-                        &self.window,
-                        &self.device,
-                        &self.pipeline_layout,
-                        control_flow,
-                    )?;
+                    (self.swap_chain, self.pipeline) = (swap_chain, pipeline);
 
                     return Ok(());
                 }
@@ -119,18 +131,21 @@ impl App {
 
             Err(_) => {
                 if self.window.was_window_resized() {
+                    self.window.reset_window_resized_flag();
+                    let (swap_chain, pipeline) = Self::recreate_swap_chain(
+                        &self.window,
+                        &self.device,
+                        &self.pipeline_layout,
+                        self.swap_chain.swap_chain(),
+                        &mut self.command_buffers,
+                        control_flow,
+                    )?;
                     unsafe { self.device_wait_idle() }.unwrap();
                     unsafe {
                         self.pipeline.destroy(&self.device);
                         self.swap_chain.destroy(&self.device);
                     }
-                    self.window.reset_window_resized_flag();
-                    (self.swap_chain, self.pipeline) = Self::recreate_swap_chain(
-                        &self.window,
-                        &self.device,
-                        &self.pipeline_layout,
-                        control_flow,
-                    )?;
+                    (self.swap_chain, self.pipeline) = (swap_chain, pipeline);
 
                     return Ok(());
                 } else {
@@ -194,6 +209,8 @@ impl App {
         window: &lve_rs::Window,
         device: &lve_rs::Device,
         pipeline_layout: &vk::PipelineLayout,
+        swap_chain: &vk::SwapchainKHR,
+        command_buffers: &mut Vec<vk::CommandBuffer>,
         mut control_flow: Option<&mut ControlFlow>,
     ) -> Result<(Box<lve_rs::SwapChain>, Box<lve_rs::Pipeline>)> {
         let device_ref = device.device();
@@ -208,7 +225,21 @@ impl App {
         // Wait until current swap chain is out of use
         unsafe { device_ref.device_wait_idle() }?;
 
-        let swap_chain = lve_rs::SwapChain::new(device, extent)?;
+        let swap_chain = if *swap_chain != vk::SwapchainKHR::null() {
+            let swap_chain =
+                lve_rs::SwapChain::with_previous_swap_chain(device, extent, swap_chain)?;
+
+            if swap_chain.image_count() != command_buffers.len() {
+                unsafe { Self::free_command_buffers(device, command_buffers) }
+
+                *command_buffers = Self::create_command_buffers(device, &swap_chain)?;
+            }
+
+            swap_chain
+        } else {
+            lve_rs::SwapChain::new(device, extent)?
+        };
+
         let pipeline = Self::create_pipeline(device, &swap_chain, pipeline_layout)?;
 
         Ok((Box::new(swap_chain), pipeline))
@@ -225,6 +256,17 @@ impl App {
         let command_buffers = unsafe { device.device().allocate_command_buffers(&allocate_info) }?;
 
         Ok(command_buffers)
+    }
+
+    #[inline]
+    unsafe fn free_command_buffers(
+        device: &lve_rs::Device,
+        command_buffers: &mut Vec<vk::CommandBuffer>,
+    ) {
+        device
+            .device()
+            .free_command_buffers(*device.command_pool(), command_buffers);
+        command_buffers.clear()
     }
 
     fn record_command_buffer(&self, image_index: usize) -> Result<()> {
@@ -250,6 +292,18 @@ impl App {
                 extent: self.swap_chain.swap_chain_extent(),
             })
             .clear_values(&clear_values);
+        let viewport = vk::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: self.swap_chain.width() as f32,
+            height: self.swap_chain.height() as f32,
+            min_depth: 0.0,
+            max_depth: 1.0,
+        };
+        let scissor = vk::Rect2D {
+            extent: self.swap_chain.swap_chain_extent(),
+            offset: vk::Offset2D { x: 0, y: 0 },
+        };
 
         unsafe {
             self.device
@@ -261,6 +315,16 @@ impl App {
                 self.command_buffers[image_index],
                 &render_pass_info,
                 vk::SubpassContents::INLINE,
+            );
+            self.device.device().cmd_set_viewport(
+                self.command_buffers[image_index],
+                0,
+                std::slice::from_ref(&viewport),
+            );
+            self.device.device().cmd_set_scissor(
+                self.command_buffers[image_index],
+                0,
+                std::slice::from_ref(&scissor),
             );
             self.pipeline
                 .bind(&self.device, &self.command_buffers[image_index]);

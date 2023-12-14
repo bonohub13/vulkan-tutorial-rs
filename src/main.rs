@@ -54,12 +54,15 @@ fn main() -> Result<()> {
                     // Limit FPS (Frames per second) to around 144
                     let elapsed_time =
                         time::Instant::now().duration_since(start_time).as_micros() as u64;
-                    if elapsed_time <= App::MILLISECONDS_PER_FRAME {
+                    let new_inst = if elapsed_time <= App::MILLISECONDS_PER_FRAME {
                         let wait_microsecond = (App::MILLISECONDS_PER_FRAME - elapsed_time).max(0);
-                        let new_inst = start_time + time::Duration::from_micros(wait_microsecond);
 
-                        *control_flow = ControlFlow::WaitUntil(new_inst);
-                    }
+                        start_time + time::Duration::from_micros(wait_microsecond)
+                    } else {
+                        start_time + time::Duration::from_micros(0)
+                    };
+
+                    *control_flow = ControlFlow::WaitUntil(new_inst);
                 }
             }
 

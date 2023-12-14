@@ -25,47 +25,17 @@ impl SwapChain {
     pub const MAX_FRAMES_IN_FLIGHT: i32 = 2;
 
     pub fn new(device: &crate::Device, extent: vk::Extent2D) -> Result<Self> {
-        let (extension, swap_chain, swap_chain_images, swap_chain_image_format, swap_chain_extent) =
-            Self::create_swap_chain(device, &extent)?;
-        let swap_chain_image_views =
-            Self::create_image_views(device, &swap_chain_images, swap_chain_image_format)?;
-        let render_pass = Self::create_render_pass(device, swap_chain_image_format)?;
-        let (depth_images, depth_image_memories, depth_image_views) =
-            Self::create_depth_resources(device, &swap_chain_extent, &swap_chain_images)?;
-        let swap_chain_framebuffers = Self::create_framebuffers(
-            device,
-            &swap_chain_extent,
-            &swap_chain_images,
-            &swap_chain_image_views,
-            &depth_image_views,
-            &render_pass,
-        )?;
-        let (
-            image_available_semaphores,
-            render_finished_semaphores,
-            in_flight_fences,
-            images_in_flight,
-        ) = Self::create_sync_objects(&device, &swap_chain_images)?;
+        Self::init(device, extent, &vk::SwapchainKHR::null())
+    }
 
-        Ok(Self {
-            swap_chain_image_format,
-            swap_chain_extent,
-            swap_chain_framebuffers,
-            render_pass,
-            depth_images,
-            depth_image_memories,
-            depth_image_views,
-            swap_chain_images,
-            swap_chain_image_views,
-            window_extent: extent,
-            extension,
-            swap_chain,
-            image_available_semaphores,
-            render_finished_semaphores,
-            in_flight_fences,
-            images_in_flight,
-            current_frame: 0,
-        })
+    pub fn with_previous_swap_chain(
+        device: &crate::Device,
+        extent: vk::Extent2D,
+        previous_swap_chain: &vk::SwapchainKHR,
+    ) -> Result<Self> {
+        let swap_chain = Self::init(device, extent, previous_swap_chain)?;
+
+        Ok(swap_chain)
     }
 
     pub unsafe fn destroy(&mut self, device: &crate::Device) {
@@ -109,6 +79,11 @@ impl SwapChain {
                     .device()
                     .destroy_fence(self.in_flight_fences[index], None);
             });
+    }
+
+    #[inline]
+    pub fn swap_chain(&self) -> &vk::SwapchainKHR {
+        &self.swap_chain
     }
 
     #[inline]
@@ -164,9 +139,8 @@ impl SwapChain {
     pub fn acquire_next_image(&self, device: &crate::Device) -> Result<(usize, bool)> {
         if self.in_flight_fences[self.current_frame] == vk::Fence::null() {
             bail!("in_flight_fences[{}] is NULL (invalid)", self.current_frame);
-        } else {
-            println!("current frame: {}", self.current_frame);
         }
+
         let fences = [self.in_flight_fences[self.current_frame]];
         unsafe { device.device().wait_for_fences(&fences, true, u64::MAX) }?;
 
@@ -261,9 +235,58 @@ impl SwapChain {
         Ok(result)
     }
 
+    fn init(
+        device: &crate::Device,
+        extent: vk::Extent2D,
+        previous_swap_chain: &vk::SwapchainKHR,
+    ) -> Result<Self> {
+        let (extension, swap_chain, swap_chain_images, swap_chain_image_format, swap_chain_extent) =
+            Self::create_swap_chain(device, &extent, previous_swap_chain)?;
+        let swap_chain_image_views =
+            Self::create_image_views(device, &swap_chain_images, swap_chain_image_format)?;
+        let render_pass = Self::create_render_pass(device, swap_chain_image_format)?;
+        let (depth_images, depth_image_memories, depth_image_views) =
+            Self::create_depth_resources(device, &swap_chain_extent, &swap_chain_images)?;
+        let swap_chain_framebuffers = Self::create_framebuffers(
+            device,
+            &swap_chain_extent,
+            &swap_chain_images,
+            &swap_chain_image_views,
+            &depth_image_views,
+            &render_pass,
+        )?;
+        let (
+            image_available_semaphores,
+            render_finished_semaphores,
+            in_flight_fences,
+            images_in_flight,
+        ) = Self::create_sync_objects(&device, &swap_chain_images)?;
+
+        Ok(Self {
+            swap_chain_image_format,
+            swap_chain_extent,
+            swap_chain_framebuffers,
+            render_pass,
+            depth_images,
+            depth_image_memories,
+            depth_image_views,
+            swap_chain_images,
+            swap_chain_image_views,
+            window_extent: extent,
+            extension,
+            swap_chain,
+            image_available_semaphores,
+            render_finished_semaphores,
+            in_flight_fences,
+            images_in_flight,
+            current_frame: 0,
+        })
+    }
+
     fn create_swap_chain(
         device: &crate::Device,
         window_extent: &vk::Extent2D,
+        previous_swap_chain: &vk::SwapchainKHR,
     ) -> Result<(
         vk_khr::Swapchain,
         vk::SwapchainKHR,
@@ -318,7 +341,11 @@ impl SwapChain {
                 .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
                 .present_mode(present_mode)
                 .clipped(true)
-                .old_swapchain(vk::SwapchainKHR::null());
+                .old_swapchain(if *previous_swap_chain != vk::SwapchainKHR::null() {
+                    *previous_swap_chain
+                } else {
+                    vk::SwapchainKHR::null()
+                });
 
             unsafe { extension.create_swapchain(&create_info, None) }?
         };
