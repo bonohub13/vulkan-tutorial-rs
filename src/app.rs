@@ -1,9 +1,18 @@
 use anyhow::{bail, Result};
 use ash::vk;
+use std::mem::size_of;
 use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
+extern crate nalgebra_glm as glm;
+
+#[derive(Default)]
+#[repr(C, align(16))]
+pub struct SimplePushConstantData {
+    offset: glm::Vec2,
+    color: glm::Vec3,
+}
 
 pub struct App {
     window: lve_rs::Window,
@@ -167,19 +176,24 @@ impl App {
 
         lve_rs::Vertex::serpinski(
             &mut vertices,
-            &lve_rs::Vertex::new(&[0.0f32, -0.95f32], &[1.0, 0., 0.]),
-            &lve_rs::Vertex::new(&[0.95f32, 0.95f32], &[0., 1., 0.]),
-            &lve_rs::Vertex::new(&[-0.95f32, 0.95f32], &[0., 0., 1.]),
-            8,
+            &lve_rs::Vertex::new(&[0.0f32, -0.5f32], &[1.0, 0., 0.]),
+            &lve_rs::Vertex::new(&[0.5f32, 0.5f32], &[0., 1., 0.]),
+            &lve_rs::Vertex::new(&[-0.5f32, 0.5f32], &[0., 0., 1.]),
+            0,
         );
 
         Ok(Box::new(lve_rs::Model::new(device, &vertices)?))
     }
 
     fn create_pipeline_layout(device: &lve_rs::Device) -> Result<vk::PipelineLayout> {
+        let push_constant_range = vk::PushConstantRange::builder()
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
+            .offset(0)
+            .size(size_of::<SimplePushConstantData>() as u32)
+            .build();
         let create_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(&[])
-            .push_constant_ranges(&[]);
+            .push_constant_ranges(std::slice::from_ref(&push_constant_range));
         let pipeline_layout =
             unsafe { device.device().create_pipeline_layout(&create_info, None) }?;
 
@@ -270,11 +284,16 @@ impl App {
     }
 
     fn record_command_buffer(&self, image_index: usize) -> Result<()> {
+        static mut FRAME: i32 = 0;
+
+        unsafe {
+            FRAME = (FRAME + 1) % 1000;
+        }
         let begin_info = vk::CommandBufferBeginInfo::builder();
         let clear_values = [
             vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: [0.1f32, 0.1f32, 0.1f32, 1.0f32],
+                    float32: [0.01f32, 0.01f32, 0.01f32, 1.0f32],
                 },
             },
             vk::ClearValue {
@@ -304,6 +323,8 @@ impl App {
             extent: self.swap_chain.swap_chain_extent(),
             offset: vk::Offset2D { x: 0, y: 0 },
         };
+        let color_offset: u32 =
+            (bytemuck::offset_of!(SimplePushConstantData, color) as u32 / 16 + 1) * 16;
 
         unsafe {
             self.device
@@ -330,8 +351,30 @@ impl App {
                 .bind(&self.device, &self.command_buffers[image_index]);
             self.model
                 .bind(&self.device, &self.command_buffers[image_index]);
-            self.model
-                .draw(&self.device, &self.command_buffers[image_index]);
+
+            for j in 0..4 {
+                let push = SimplePushConstantData {
+                    offset: glm::vec2(-0.5 + FRAME as f32 * 0.002, -0.4 + j as f32 * 0.25),
+                    color: glm::vec3(0.0, 0.0, 0.2 + 0.2 * j as f32),
+                };
+
+                self.device.device().cmd_push_constants(
+                    self.command_buffers[image_index],
+                    self.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    bytemuck::offset_of!(SimplePushConstantData, offset) as u32,
+                    bytemuck::cast_slice(push.offset.as_slice()),
+                );
+                self.device.device().cmd_push_constants(
+                    self.command_buffers[image_index],
+                    self.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    color_offset,
+                    bytemuck::cast_slice(push.color.as_slice()),
+                );
+                self.model
+                    .draw(&self.device, &self.command_buffers[image_index]);
+            }
 
             self.device
                 .device()

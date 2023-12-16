@@ -5,7 +5,7 @@ use app::App;
 use std::borrow::BorrowMut;
 use std::time;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
@@ -18,7 +18,8 @@ fn main() -> Result<()> {
         .run_return(move |event, _, control_flow| {
             let start_time = time::Instant::now();
 
-            *control_flow = ControlFlow::Poll;
+            control_flow.set_poll();
+
             match event {
                 Event::WindowEvent {
                     ref event,
@@ -37,6 +38,7 @@ fn main() -> Result<()> {
                     _ => (),
                 },
                 Event::RedrawRequested(_) => {}
+                Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {}
                 Event::MainEventsCleared => {
                     app.draw_frame(Some(control_flow)).unwrap_or_else(|e| {
                         eprintln!("{:?}", e);
@@ -53,13 +55,12 @@ fn main() -> Result<()> {
                 _ => {
                     // Limit FPS (Frames per second) to around 144
                     let elapsed_time =
-                        time::Instant::now().duration_since(start_time).as_micros() as u64;
-                    let new_inst = if elapsed_time <= App::MILLISECONDS_PER_FRAME {
-                        let wait_microsecond = (App::MILLISECONDS_PER_FRAME - elapsed_time).max(0);
+                        time::Instant::now().duration_since(start_time).as_micros() as i128;
+                    let new_inst = {
+                        let wait_microsecond =
+                            (App::MILLISECONDS_PER_FRAME as i128 - elapsed_time).max(0);
 
-                        start_time + time::Duration::from_micros(wait_microsecond)
-                    } else {
-                        start_time + time::Duration::from_micros(0)
+                        start_time + time::Duration::from_micros(wait_microsecond as u64)
                     };
 
                     *control_flow = ControlFlow::WaitUntil(new_inst);
