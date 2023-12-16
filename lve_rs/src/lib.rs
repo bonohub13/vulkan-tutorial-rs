@@ -1,5 +1,6 @@
 mod debug;
 mod device;
+mod game_objects;
 mod model;
 mod pipeline;
 mod surface;
@@ -8,6 +9,7 @@ mod window;
 
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
+pub use game_objects::{GameObject, ObjectId, TransformComponent2D};
 pub use model::{Model, Vertex};
 pub use pipeline::Pipeline;
 pub use surface::{Surface, SwapChainSupportDetails};

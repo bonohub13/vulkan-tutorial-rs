@@ -23,29 +23,12 @@ impl Vertex {
         }
     }
 
-    pub fn serpinski(vertices: &mut Vec<Self>, top: &Self, right: &Self, left: &Self, depth: u32) {
-        if depth <= 0 {
-            vertices.push(*top);
-            vertices.push(*right);
-            vertices.push(*left);
-        } else {
-            let top_right = Self {
-                position: 0.5f32 * (top.position + right.position),
-                color: 0.5f32 * (top.color + right.color),
-            };
-            let right_left = Self {
-                position: 0.5f32 * (right.position + left.position),
-                color: 0.5f32 * (right.color + left.color),
-            };
-            let left_top = Self {
-                position: 0.5f32 * (left.position + top.position),
-                color: 0.5f32 * (left.color + top.color),
-            };
+    pub fn serpinski(top: &Self, right: &Self, left: &Self, depth: u32) -> Vec<Self> {
+        let mut vertices = vec![];
 
-            Self::serpinski(vertices, &left_top, &right_left, &left, depth - 1);
-            Self::serpinski(vertices, &top_right, &right, &right_left, depth - 1);
-            Self::serpinski(vertices, top, &top_right, &left_top, depth - 1);
-        }
+        Self::serpinski_triangle(&mut vertices, top, right, left, depth);
+
+        vertices
     }
 
     pub fn binding_descriptions() -> Vec<vk::VertexInputBindingDescription> {
@@ -72,6 +55,37 @@ impl Vertex {
                 .build(),
         ]
     }
+
+    fn serpinski_triangle(
+        vertices: &mut Vec<Self>,
+        top: &Self,
+        right: &Self,
+        left: &Self,
+        depth: u32,
+    ) {
+        if depth <= 0 {
+            vertices.push(*top);
+            vertices.push(*right);
+            vertices.push(*left);
+        } else {
+            let top_right = Self {
+                position: 0.5f32 * (top.position + right.position),
+                color: 0.5f32 * (top.color + right.color),
+            };
+            let right_left = Self {
+                position: 0.5f32 * (right.position + left.position),
+                color: 0.5f32 * (right.color + left.color),
+            };
+            let left_top = Self {
+                position: 0.5f32 * (left.position + top.position),
+                color: 0.5f32 * (left.color + top.color),
+            };
+
+            Self::serpinski_triangle(vertices, &left_top, &right_left, &left, depth - 1);
+            Self::serpinski_triangle(vertices, &top_right, &right, &right_left, depth - 1);
+            Self::serpinski_triangle(vertices, top, &top_right, &left_top, depth - 1);
+        }
+    }
 }
 
 impl Model {
@@ -89,8 +103,12 @@ impl Model {
     pub unsafe fn destroy(&mut self, device: &crate::Device) {
         let device_ref = device.device();
 
-        device_ref.destroy_buffer(self.vertex_buffer, None);
-        device_ref.free_memory(self.vertex_buffer_memory, None);
+        if self.vertex_buffer != vk::Buffer::null() {
+            device_ref.destroy_buffer(self.vertex_buffer, None);
+        }
+        if self.vertex_buffer_memory != vk::DeviceMemory::null() {
+            device_ref.free_memory(self.vertex_buffer_memory, None);
+        }
     }
 
     #[inline]

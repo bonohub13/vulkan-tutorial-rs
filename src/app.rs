@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use ash::vk;
 use std::mem::size_of;
+use std::{cell::RefCell, rc::Rc};
 use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::Window,
@@ -10,6 +11,7 @@ extern crate nalgebra_glm as glm;
 #[derive(Default)]
 #[repr(C, align(16))]
 pub struct SimplePushConstantData {
+    transform: glm::Mat2,
     offset: glm::Vec2,
     color: glm::Vec3,
 }
@@ -21,7 +23,7 @@ pub struct App {
     pipeline: Box<lve_rs::Pipeline>,
     pipeline_layout: vk::PipelineLayout,
     command_buffers: Vec<vk::CommandBuffer>,
-    model: Box<lve_rs::Model>,
+    game_objects: Vec<lve_rs::GameObject>,
 }
 
 impl App {
@@ -49,7 +51,10 @@ impl App {
         };
         let window = lve_rs::Window::new(event_loop, width, height, "Hello Vulkan!")?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
-        let model = Self::load_models(&device)?;
+        let mut game_objects = vec![];
+
+        Self::load_game_object(&mut game_objects, &device)?;
+
         let pipeline_layout = Self::create_pipeline_layout(&device)?;
         let (swap_chain, pipeline) = Self::recreate_swap_chain(
             &window,
@@ -68,7 +73,7 @@ impl App {
             pipeline,
             pipeline_layout,
             command_buffers,
-            model,
+            game_objects,
         })
     }
 
@@ -171,18 +176,20 @@ impl App {
         Ok(self.device.device().device_wait_idle()?)
     }
 
-    fn load_models(device: &lve_rs::Device) -> Result<Box<lve_rs::Model>> {
-        let mut vertices = vec![];
-
-        lve_rs::Vertex::serpinski(
-            &mut vertices,
+    fn load_game_object(
+        game_objects: &mut Vec<lve_rs::GameObject>,
+        device: &lve_rs::Device,
+    ) -> Result<()> {
+        let vertices = lve_rs::Vertex::serpinski(
             &lve_rs::Vertex::new(&[0.0f32, -0.5f32], &[1.0, 0., 0.]),
             &lve_rs::Vertex::new(&[0.5f32, 0.5f32], &[0., 1., 0.]),
             &lve_rs::Vertex::new(&[-0.5f32, 0.5f32], &[0., 0., 1.]),
             0,
         );
 
-        Ok(Box::new(lve_rs::Model::new(device, &vertices)?))
+        *game_objects = unsafe { lve_rs::GameObject::multiple_triangles(device) }?;
+
+        Ok(())
     }
 
     fn create_pipeline_layout(device: &lve_rs::Device) -> Result<vk::PipelineLayout> {
@@ -283,12 +290,7 @@ impl App {
         command_buffers.clear()
     }
 
-    fn record_command_buffer(&self, image_index: usize) -> Result<()> {
-        static mut FRAME: i32 = 0;
-
-        unsafe {
-            FRAME = (FRAME + 1) % 1000;
-        }
+    fn record_command_buffer(&mut self, image_index: usize) -> Result<()> {
         let begin_info = vk::CommandBufferBeginInfo::builder();
         let clear_values = [
             vk::ClearValue {
@@ -323,8 +325,6 @@ impl App {
             extent: self.swap_chain.swap_chain_extent(),
             offset: vk::Offset2D { x: 0, y: 0 },
         };
-        let color_offset: u32 =
-            (bytemuck::offset_of!(SimplePushConstantData, color) as u32 / 16 + 1) * 16;
 
         unsafe {
             self.device
@@ -347,35 +347,7 @@ impl App {
                 0,
                 std::slice::from_ref(&scissor),
             );
-            self.pipeline
-                .bind(&self.device, &self.command_buffers[image_index]);
-            self.model
-                .bind(&self.device, &self.command_buffers[image_index]);
-
-            for j in 0..4 {
-                let push = SimplePushConstantData {
-                    offset: glm::vec2(-0.5 + FRAME as f32 * 0.002, -0.4 + j as f32 * 0.25),
-                    color: glm::vec3(0.0, 0.0, 0.2 + 0.2 * j as f32),
-                };
-
-                self.device.device().cmd_push_constants(
-                    self.command_buffers[image_index],
-                    self.pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    bytemuck::offset_of!(SimplePushConstantData, offset) as u32,
-                    bytemuck::cast_slice(push.offset.as_slice()),
-                );
-                self.device.device().cmd_push_constants(
-                    self.command_buffers[image_index],
-                    self.pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    color_offset,
-                    bytemuck::cast_slice(push.color.as_slice()),
-                );
-                self.model
-                    .draw(&self.device, &self.command_buffers[image_index]);
-            }
-
+            self.render_game_objects(self.command_buffers[image_index]);
             self.device
                 .device()
                 .cmd_end_render_pass(self.command_buffers[image_index]);
@@ -388,12 +360,80 @@ impl App {
 
         Ok(())
     }
+
+    unsafe fn render_game_objects(&mut self, command_buffer: vk::CommandBuffer) {
+        for (i, game_object) in self.game_objects.iter_mut().enumerate() {
+            game_object.transform_2d.rotation = glm::modf(
+                game_object.transform_2d.rotation + 0.001 * (i + 1) as f32,
+                2.0 * std::f32::consts::PI,
+            );
+        }
+
+        self.pipeline.bind(&self.device, &command_buffer);
+        for game_object in self.game_objects.iter_mut() {
+            let push = SimplePushConstantData {
+                transform: game_object.transform_2d.mat2(),
+                offset: game_object.transform_2d.translation,
+                color: game_object.color,
+            };
+            let offsets = {
+                let transform = bytemuck::offset_of!(SimplePushConstantData, transform) as u32;
+                let offset = bytemuck::offset_of!(SimplePushConstantData, offset) as u32;
+                let color = bytemuck::offset_of!(SimplePushConstantData, color) as u32;
+                let aligned_offset = |offset: u32| {
+                    if offset % 16 == 0 {
+                        offset
+                    } else {
+                        (offset / 16 + 1) * 16
+                    }
+                };
+
+                [
+                    aligned_offset(transform),
+                    aligned_offset(offset),
+                    aligned_offset(color),
+                ]
+            };
+
+            self.device.device().cmd_push_constants(
+                command_buffer,
+                self.pipeline_layout,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+                bytemuck::cast_slice(push.transform.as_slice()),
+            );
+            self.device.device().cmd_push_constants(
+                command_buffer,
+                self.pipeline_layout,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                offsets[1],
+                bytemuck::cast_slice(push.offset.as_slice()),
+            );
+            self.device.device().cmd_push_constants(
+                command_buffer,
+                self.pipeline_layout,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                offsets[2],
+                bytemuck::cast_slice(push.color.as_slice()),
+            );
+            game_object
+                .model
+                .borrow()
+                .bind(&self.device, &command_buffer);
+            game_object
+                .model
+                .borrow()
+                .draw(&self.device, &command_buffer);
+        }
+    }
 }
 
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
-            self.model.destroy(&self.device);
+            for game_object in self.game_objects.iter() {
+                game_object.model.borrow_mut().destroy(&self.device);
+            }
             if self.command_buffers.len() > 0 {
                 self.device
                     .device()
