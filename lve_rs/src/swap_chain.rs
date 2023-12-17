@@ -3,6 +3,7 @@ use ash::{extensions::khr as vk_khr, vk};
 
 pub struct SwapChain {
     swap_chain_image_format: vk::Format,
+    swap_chain_depth_format: vk::Format,
     swap_chain_extent: vk::Extent2D,
     swap_chain_framebuffers: Vec<vk::Framebuffer>,
     render_pass: vk::RenderPass,
@@ -26,6 +27,29 @@ impl SwapChain {
 
     pub fn new(device: &crate::Device, extent: vk::Extent2D) -> Result<Self> {
         Self::init(device, extent, &vk::SwapchainKHR::null())
+    }
+
+    pub fn null(device: &crate::Device) -> Self {
+        Self {
+            swap_chain_image_format: vk::Format::default(),
+            swap_chain_depth_format: vk::Format::default(),
+            swap_chain_extent: vk::Extent2D::default(),
+            swap_chain_framebuffers: vec![],
+            render_pass: vk::RenderPass::null(),
+            depth_images: vec![],
+            depth_image_memories: vec![],
+            depth_image_views: vec![],
+            swap_chain_images: vec![],
+            swap_chain_image_views: vec![],
+            window_extent: vk::Extent2D::default(),
+            extension: vk_khr::Swapchain::new(device.instance(), device.device()),
+            swap_chain: vk::SwapchainKHR::null(),
+            image_available_semaphores: vec![],
+            render_finished_semaphores: vec![],
+            in_flight_fences: vec![],
+            images_in_flight: vec![],
+            current_frame: 0,
+        }
     }
 
     pub fn with_previous_swap_chain(
@@ -235,6 +259,11 @@ impl SwapChain {
         Ok(result)
     }
 
+    pub fn compare_swap_formats(&self, swap_chain: &Self) -> bool {
+        self.swap_chain_image_format == swap_chain.swap_chain_image_format
+            && self.swap_chain_depth_format == swap_chain.swap_chain_depth_format
+    }
+
     fn init(
         device: &crate::Device,
         extent: vk::Extent2D,
@@ -245,7 +274,7 @@ impl SwapChain {
         let swap_chain_image_views =
             Self::create_image_views(device, &swap_chain_images, swap_chain_image_format)?;
         let render_pass = Self::create_render_pass(device, swap_chain_image_format)?;
-        let (depth_images, depth_image_memories, depth_image_views) =
+        let (depth_images, depth_image_memories, depth_image_views, swap_chain_depth_format) =
             Self::create_depth_resources(device, &swap_chain_extent, &swap_chain_images)?;
         let swap_chain_framebuffers = Self::create_framebuffers(
             device,
@@ -264,6 +293,7 @@ impl SwapChain {
 
         Ok(Self {
             swap_chain_image_format,
+            swap_chain_depth_format,
             swap_chain_extent,
             swap_chain_framebuffers,
             render_pass,
@@ -396,7 +426,12 @@ impl SwapChain {
         device: &crate::Device,
         swap_chain_extent: &vk::Extent2D,
         swap_chain_images: &[vk::Image],
-    ) -> Result<(Vec<vk::Image>, Vec<vk::DeviceMemory>, Vec<vk::ImageView>)> {
+    ) -> Result<(
+        Vec<vk::Image>,
+        Vec<vk::DeviceMemory>,
+        Vec<vk::ImageView>,
+        vk::Format,
+    )> {
         let depth_format = Self::find_depth_format_from_device(device)?;
         let image_count = swap_chain_images.len();
         let image_info = vk::ImageCreateInfo::builder()
@@ -448,7 +483,12 @@ impl SwapChain {
             };
         }
 
-        Ok((depth_images, depth_image_memories, depth_image_views))
+        Ok((
+            depth_images,
+            depth_image_memories,
+            depth_image_views,
+            depth_format,
+        ))
     }
 
     fn create_render_pass(
@@ -498,7 +538,7 @@ impl SwapChain {
                     vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
                         | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
                 )
-                .src_access_mask(vk::AccessFlags::NONE)
+                .src_access_mask(vk::AccessFlags::empty())
                 .dst_subpass(0)
                 .dst_stage_mask(
                     vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT

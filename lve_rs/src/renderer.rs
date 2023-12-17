@@ -6,24 +6,20 @@ pub struct Renderer {
     swap_chain: Box<crate::SwapChain>,
     command_buffers: Vec<vk::CommandBuffer>,
     current_image_index: usize,
+    current_frame_index: usize,
     frame_started: bool,
 }
 
 impl Renderer {
     pub fn new(window: &crate::Window, device: &crate::Device) -> Result<Self> {
-        let swap_chain = Self::recreate_swap_chain(
-            &window,
-            &device,
-            &vk::SwapchainKHR::null(),
-            &mut vec![],
-            None,
-        )?;
-        let command_buffers = Self::create_command_buffers(&device, &swap_chain)?;
+        let swap_chain = Self::recreate_swap_chain(&window, &device, None, None)?;
+        let command_buffers = Self::create_command_buffers(&device)?;
 
         Ok(Self {
             swap_chain,
             command_buffers,
             current_image_index: 0,
+            current_frame_index: 0,
             frame_started: false,
         })
     }
@@ -51,7 +47,16 @@ impl Renderer {
             "Cannot get command buffer when frame not in progress"
         );
 
-        &self.command_buffers[self.current_image_index]
+        &self.command_buffers[self.current_frame_index]
+    }
+
+    pub const fn frame_index(&self) -> usize {
+        assert!(
+            self.frame_started,
+            "Cannot get frame index when frame not in progress"
+        );
+
+        self.current_frame_index
     }
 
     pub fn begin_frame(
@@ -72,8 +77,7 @@ impl Renderer {
                     let swap_chain = Self::recreate_swap_chain(
                         window,
                         device,
-                        self.swap_chain.swap_chain(),
-                        &mut self.command_buffers,
+                        Some(&self.swap_chain),
                         control_flow,
                     )?;
                     unsafe { device_ref.device_wait_idle() }?;
@@ -130,8 +134,7 @@ impl Renderer {
                     let swap_chain = Self::recreate_swap_chain(
                         window,
                         device,
-                        self.swap_chain.swap_chain(),
-                        &mut self.command_buffers,
+                        Some(&self.swap_chain),
                         control_flow,
                     )?;
                     unsafe { device_ref.device_wait_idle() }?;
@@ -148,8 +151,7 @@ impl Renderer {
                     let swap_chain = Self::recreate_swap_chain(
                         window,
                         device,
-                        self.swap_chain.swap_chain(),
-                        &mut self.command_buffers,
+                        Some(&self.swap_chain),
                         control_flow,
                     )?;
                     unsafe { device_ref.device_wait_idle() }?;
@@ -164,6 +166,8 @@ impl Renderer {
         };
 
         self.frame_started = false;
+        self.current_frame_index =
+            (self.current_frame_index + 1) % crate::SwapChain::MAX_FRAMES_IN_FLIGHT as usize;
 
         Ok(())
     }
@@ -249,8 +253,7 @@ impl Renderer {
     fn recreate_swap_chain(
         window: &crate::Window,
         device: &crate::Device,
-        swap_chain: &vk::SwapchainKHR,
-        command_buffers: &mut Vec<vk::CommandBuffer>,
+        old_swap_chain: Option<&crate::SwapChain>,
         mut control_flow: Option<&mut ControlFlow>,
     ) -> Result<Box<crate::SwapChain>> {
         let device_ref = device.device();
@@ -265,14 +268,15 @@ impl Renderer {
         // Wait until current swap chain is out of use
         unsafe { device_ref.device_wait_idle() }?;
 
-        let swap_chain = if *swap_chain != vk::SwapchainKHR::null() {
-            let swap_chain =
-                crate::SwapChain::with_previous_swap_chain(device, extent, swap_chain)?;
+        let swap_chain = if let Some(old_swap_chain) = old_swap_chain {
+            let swap_chain = crate::SwapChain::with_previous_swap_chain(
+                device,
+                extent,
+                old_swap_chain.swap_chain(),
+            )?;
 
-            if swap_chain.image_count() != command_buffers.len() {
-                unsafe { Self::free_command_buffers(device, command_buffers) }
-
-                *command_buffers = Self::create_command_buffers(device, &swap_chain)?;
+            if !old_swap_chain.compare_swap_formats(&swap_chain) {
+                bail!("Swap chain image or depth format has changed!");
             }
 
             swap_chain
@@ -283,14 +287,11 @@ impl Renderer {
         Ok(Box::new(swap_chain))
     }
 
-    fn create_command_buffers(
-        device: &crate::Device,
-        swap_chain: &crate::SwapChain,
-    ) -> Result<Vec<vk::CommandBuffer>> {
+    fn create_command_buffers(device: &crate::Device) -> Result<Vec<vk::CommandBuffer>> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_pool(*device.command_pool())
-            .command_buffer_count(swap_chain.image_count().try_into()?);
+            .command_buffer_count(crate::SwapChain::MAX_FRAMES_IN_FLIGHT as u32);
         let command_buffers = unsafe { device.device().allocate_command_buffers(&allocate_info) }?;
 
         Ok(command_buffers)

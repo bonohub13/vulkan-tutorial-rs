@@ -11,10 +11,6 @@ use std::{ffi::CStr, fs::File};
  */
 
 pub struct PipelineConfigInfo {
-    /*
-    pub viewport: vk::Viewport,
-    pub scissor: vk::Rect2D,
-    */
     pub viewport_info: vk::PipelineViewportStateCreateInfo,
     pub input_assembly_info: vk::PipelineInputAssemblyStateCreateInfo,
     pub rasterization_info: vk::PipelineRasterizationStateCreateInfo,
@@ -59,22 +55,8 @@ impl Pipeline {
         )
     }
 
-    pub fn default_pipeline_config_info(width: u32, height: u32) -> PipelineConfigInfo {
+    pub fn default_pipeline_config_info() -> PipelineConfigInfo {
         PipelineConfigInfo {
-            /*
-            viewport: vk::Viewport {
-                x: 0.0f32,
-                y: 0.0f32,
-                width: width as f32,
-                height: height as f32,
-                min_depth: 0.0f32,
-                max_depth: 1.0f32,
-            },
-            scissor: vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D { width, height },
-            },
-            */
             viewport_info: vk::PipelineViewportStateCreateInfo::builder()
                 .viewports(&[])
                 .scissors(&[])
@@ -180,11 +162,6 @@ impl Pipeline {
             let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
                 .vertex_attribute_descriptions(&attribute_descriptions)
                 .vertex_binding_descriptions(&binding_descriptions);
-            /*
-            let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
-                .viewports(std::slice::from_ref(&config_info.viewport))
-                .scissors(std::slice::from_ref(&config_info.scissor));
-            */
             let color_blend_info = vk::PipelineColorBlendStateCreateInfo::builder()
                 .logic_op_enable(false)
                 .logic_op(vk::LogicOp::COPY)
