@@ -92,7 +92,7 @@ impl SwapChain {
     }
 
     #[inline]
-    pub fn render_pass(&self) -> &vk::RenderPass {
+    pub const fn render_pass(&self) -> &vk::RenderPass {
         &self.render_pass
     }
 

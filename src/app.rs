@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use ash::vk;
 use std::mem::size_of;
 use std::{cell::RefCell, rc::Rc};
@@ -6,6 +6,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
+
 extern crate nalgebra_glm as glm;
 
 #[derive(Default)]
@@ -19,10 +20,9 @@ pub struct SimplePushConstantData {
 pub struct App {
     window: lve_rs::Window,
     device: lve_rs::Device,
-    swap_chain: Box<lve_rs::SwapChain>,
+    renderer: lve_rs::Renderer,
     pipeline: Box<lve_rs::Pipeline>,
     pipeline_layout: vk::PipelineLayout,
-    command_buffers: Vec<vk::CommandBuffer>,
     game_objects: Vec<lve_rs::GameObject>,
 }
 
@@ -51,30 +51,55 @@ impl App {
         };
         let window = lve_rs::Window::new(event_loop, width, height, "Hello Vulkan!")?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
+        let renderer = lve_rs::Renderer::new(&window, &device)?;
         let mut game_objects = vec![];
 
         Self::load_game_object(&mut game_objects, &device)?;
 
         let pipeline_layout = Self::create_pipeline_layout(&device)?;
-        let (swap_chain, pipeline) = Self::recreate_swap_chain(
-            &window,
-            &device,
-            &pipeline_layout,
-            &vk::SwapchainKHR::null(),
-            &mut vec![],
-            None,
-        )?;
-        let command_buffers = Self::create_command_buffers(&device, &swap_chain)?;
+        let pipeline = Self::create_pipeline(&device, &renderer, &pipeline_layout)?;
 
         Ok(Self {
             window,
             device,
-            swap_chain,
+            renderer,
             pipeline,
             pipeline_layout,
-            command_buffers,
             game_objects,
         })
+    }
+
+    pub fn draw_frame(&mut self, mut control_flow: Option<&mut ControlFlow>) -> Result<()> {
+        let command_buffer = self.renderer.begin_frame(
+            &self.window,
+            &self.device,
+            if let Some(ref mut cf_mut_ref) = control_flow {
+                Some(*cf_mut_ref)
+            } else {
+                None
+            },
+        )?;
+
+        if command_buffer != vk::CommandBuffer::null() {
+            unsafe {
+                self.renderer
+                    .begin_swap_chain_render_pass(&self.device, &command_buffer);
+                self.render_game_objects(command_buffer);
+                self.renderer
+                    .end_swap_chain_render_pass(&self.device, &command_buffer);
+                self.renderer.end_frame(
+                    &mut self.window,
+                    &self.device,
+                    if let Some(ref mut cf_mut_ref) = control_flow {
+                        Some(*cf_mut_ref)
+                    } else {
+                        None
+                    },
+                )?;
+            }
+        }
+
+        Ok(())
     }
 
     #[inline]
@@ -85,90 +110,6 @@ impl App {
     #[inline]
     pub fn window_resized(&mut self, width: i32, height: i32) {
         self.window.framebuffer_resized(width, height);
-    }
-
-    pub fn draw_frame(&mut self, control_flow: Option<&mut ControlFlow>) -> Result<()> {
-        let (image_index, _) = match self.swap_chain.acquire_next_image(&self.device) {
-            Ok((image_index, result)) => {
-                if result {
-                    let (swap_chain, pipeline) = Self::recreate_swap_chain(
-                        &self.window,
-                        &self.device,
-                        &self.pipeline_layout,
-                        self.swap_chain.swap_chain(),
-                        &mut self.command_buffers,
-                        control_flow,
-                    )?;
-                    unsafe { self.device_wait_idle() }.unwrap();
-                    unsafe {
-                        self.pipeline.destroy(&self.device);
-                        self.swap_chain.destroy(&self.device);
-                    }
-                    (self.swap_chain, self.pipeline) = (swap_chain, pipeline);
-
-                    return Ok(());
-                }
-
-                Ok((image_index, result)) as Result<(usize, bool)>
-            }
-            Err(_) => bail!("Failed to acquire swap chain image!"),
-        }?;
-
-        self.record_command_buffer(image_index)?;
-
-        match self.swap_chain.submit_command_buffers(
-            &self.device,
-            &self.command_buffers[image_index],
-            image_index,
-        ) {
-            Ok(window_resized) => {
-                if window_resized || self.window.was_window_resized() {
-                    self.window.reset_window_resized_flag();
-                    let (swap_chain, pipeline) = Self::recreate_swap_chain(
-                        &self.window,
-                        &self.device,
-                        &self.pipeline_layout,
-                        self.swap_chain.swap_chain(),
-                        &mut self.command_buffers,
-                        control_flow,
-                    )?;
-                    unsafe { self.device_wait_idle() }.unwrap();
-                    unsafe {
-                        self.pipeline.destroy(&self.device);
-                        self.swap_chain.destroy(&self.device);
-                    }
-                    (self.swap_chain, self.pipeline) = (swap_chain, pipeline);
-
-                    return Ok(());
-                }
-            }
-
-            Err(_) => {
-                if self.window.was_window_resized() {
-                    self.window.reset_window_resized_flag();
-                    let (swap_chain, pipeline) = Self::recreate_swap_chain(
-                        &self.window,
-                        &self.device,
-                        &self.pipeline_layout,
-                        self.swap_chain.swap_chain(),
-                        &mut self.command_buffers,
-                        control_flow,
-                    )?;
-                    unsafe { self.device_wait_idle() }.unwrap();
-                    unsafe {
-                        self.pipeline.destroy(&self.device);
-                        self.swap_chain.destroy(&self.device);
-                    }
-                    (self.swap_chain, self.pipeline) = (swap_chain, pipeline);
-
-                    return Ok(());
-                } else {
-                    bail!("Failed to present swap chain image!")
-                }
-            }
-        };
-
-        Ok(())
     }
 
     #[inline]
@@ -186,8 +127,16 @@ impl App {
             &lve_rs::Vertex::new(&[-0.5f32, 0.5f32], &[0., 0., 1.]),
             0,
         );
+        let model = lve_rs::Model::new(device, &vertices)?;
+        let mut triangle =
+            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(model))) };
 
-        *game_objects = unsafe { lve_rs::GameObject::multiple_triangles(device) }?;
+        triangle.color = glm::vec3(0.1, 0.8, 0.1);
+        triangle.transform_2d.translation.x = 0.2;
+        triangle.transform_2d.scale = glm::vec2(2.0, 0.5);
+        triangle.transform_2d.rotation = 0.5 * std::f32::consts::PI;
+
+        *game_objects = vec![triangle];
 
         Ok(())
     }
@@ -209,13 +158,20 @@ impl App {
 
     fn create_pipeline(
         device: &lve_rs::Device,
-        swap_chain: &lve_rs::SwapChain,
+        renderer: &lve_rs::Renderer,
         pipeline_layout: &vk::PipelineLayout,
     ) -> Result<Box<lve_rs::Pipeline>> {
-        let mut config_info =
-            lve_rs::Pipeline::default_pipeline_config_info(swap_chain.width(), swap_chain.height());
+        assert!(
+            *pipeline_layout != vk::PipelineLayout::null(),
+            "Cannot create pipeline before pipeline layout"
+        );
 
-        config_info.render_pass = *swap_chain.render_pass();
+        let mut config_info = lve_rs::Pipeline::default_pipeline_config_info(
+            renderer.swap_chain().width(),
+            renderer.swap_chain().height(),
+        );
+
+        config_info.render_pass = *renderer.swap_chain_render_pass();
         config_info.pipeline_layout = *pipeline_layout;
 
         Ok(Box::new(lve_rs::Pipeline::new(
@@ -224,141 +180,6 @@ impl App {
             "./shaders/simple_shader.frag.spv",
             &config_info,
         )?))
-    }
-
-    fn recreate_swap_chain(
-        window: &lve_rs::Window,
-        device: &lve_rs::Device,
-        pipeline_layout: &vk::PipelineLayout,
-        swap_chain: &vk::SwapchainKHR,
-        command_buffers: &mut Vec<vk::CommandBuffer>,
-        mut control_flow: Option<&mut ControlFlow>,
-    ) -> Result<(Box<lve_rs::SwapChain>, Box<lve_rs::Pipeline>)> {
-        let device_ref = device.device();
-        let mut extent = window.extent()?;
-
-        while extent.width == 0 || extent.height == 0 {
-            extent = window.extent()?;
-            if let Some(ref mut control_flow_mut_ref) = control_flow {
-                **control_flow_mut_ref = ControlFlow::Wait;
-            }
-        }
-        // Wait until current swap chain is out of use
-        unsafe { device_ref.device_wait_idle() }?;
-
-        let swap_chain = if *swap_chain != vk::SwapchainKHR::null() {
-            let swap_chain =
-                lve_rs::SwapChain::with_previous_swap_chain(device, extent, swap_chain)?;
-
-            if swap_chain.image_count() != command_buffers.len() {
-                unsafe { Self::free_command_buffers(device, command_buffers) }
-
-                *command_buffers = Self::create_command_buffers(device, &swap_chain)?;
-            }
-
-            swap_chain
-        } else {
-            lve_rs::SwapChain::new(device, extent)?
-        };
-
-        let pipeline = Self::create_pipeline(device, &swap_chain, pipeline_layout)?;
-
-        Ok((Box::new(swap_chain), pipeline))
-    }
-
-    fn create_command_buffers(
-        device: &lve_rs::Device,
-        swap_chain: &lve_rs::SwapChain,
-    ) -> Result<Vec<vk::CommandBuffer>> {
-        let allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_pool(*device.command_pool())
-            .command_buffer_count(swap_chain.image_count().try_into()?);
-        let command_buffers = unsafe { device.device().allocate_command_buffers(&allocate_info) }?;
-
-        Ok(command_buffers)
-    }
-
-    #[inline]
-    unsafe fn free_command_buffers(
-        device: &lve_rs::Device,
-        command_buffers: &mut Vec<vk::CommandBuffer>,
-    ) {
-        device
-            .device()
-            .free_command_buffers(*device.command_pool(), command_buffers);
-        command_buffers.clear()
-    }
-
-    fn record_command_buffer(&mut self, image_index: usize) -> Result<()> {
-        let begin_info = vk::CommandBufferBeginInfo::builder();
-        let clear_values = [
-            vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: [0.01f32, 0.01f32, 0.01f32, 1.0f32],
-                },
-            },
-            vk::ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue::builder()
-                    .depth(1.0f32)
-                    .stencil(0)
-                    .build(),
-            },
-        ];
-        let render_pass_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(*self.swap_chain.render_pass())
-            .framebuffer(*self.swap_chain.framebuffer(image_index))
-            .render_area(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: self.swap_chain.swap_chain_extent(),
-            })
-            .clear_values(&clear_values);
-        let viewport = vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: self.swap_chain.width() as f32,
-            height: self.swap_chain.height() as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        };
-        let scissor = vk::Rect2D {
-            extent: self.swap_chain.swap_chain_extent(),
-            offset: vk::Offset2D { x: 0, y: 0 },
-        };
-
-        unsafe {
-            self.device
-                .device()
-                .begin_command_buffer(self.command_buffers[image_index], &begin_info)
-        }?;
-        unsafe {
-            self.device.device().cmd_begin_render_pass(
-                self.command_buffers[image_index],
-                &render_pass_info,
-                vk::SubpassContents::INLINE,
-            );
-            self.device.device().cmd_set_viewport(
-                self.command_buffers[image_index],
-                0,
-                std::slice::from_ref(&viewport),
-            );
-            self.device.device().cmd_set_scissor(
-                self.command_buffers[image_index],
-                0,
-                std::slice::from_ref(&scissor),
-            );
-            self.render_game_objects(self.command_buffers[image_index]);
-            self.device
-                .device()
-                .cmd_end_render_pass(self.command_buffers[image_index]);
-        }
-        unsafe {
-            self.device
-                .device()
-                .end_command_buffer(self.command_buffers[image_index])
-        }?;
-
-        Ok(())
     }
 
     unsafe fn render_game_objects(&mut self, command_buffer: vk::CommandBuffer) {
@@ -434,16 +255,11 @@ impl Drop for App {
             for game_object in self.game_objects.iter() {
                 game_object.model.borrow_mut().destroy(&self.device);
             }
-            if self.command_buffers.len() > 0 {
-                self.device
-                    .device()
-                    .free_command_buffers(*self.device.command_pool(), &self.command_buffers);
-            }
             self.device
                 .device()
                 .destroy_pipeline_layout(self.pipeline_layout, None);
             self.pipeline.destroy(&self.device);
-            self.swap_chain.destroy(&self.device);
+            self.renderer.destroy(&self.device);
             self.device.destroy();
         }
     }
