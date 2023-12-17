@@ -1,4 +1,5 @@
 mod app;
+mod extras;
 
 use anyhow::{bail, Result};
 use app::App;
@@ -12,7 +13,8 @@ use winit::{
 
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
-    let mut app = App::new(&event_loop, None, None)?;
+    let mut app = extras::tutorial_11::GravityPhysicsDemo::new(&event_loop, None, None)?;
+
     let result = event_loop
         .borrow_mut()
         .run_return(move |event, _, control_flow| {
@@ -24,7 +26,7 @@ fn main() -> Result<()> {
                 Event::WindowEvent {
                     ref event,
                     window_id,
-                } if window_id == app.window().id() => match event {
+                } if window_id == app.window().window().id() => match event {
                     WindowEvent::CloseRequested => {
                         *control_flow = ControlFlow::Exit;
                     }
@@ -50,7 +52,7 @@ fn main() -> Result<()> {
 
             match *control_flow {
                 ControlFlow::Exit | ControlFlow::ExitWithCode(_) => {
-                    unsafe { app.device_wait_idle() }.unwrap()
+                    unsafe { app.device().device().device_wait_idle() }.unwrap();
                 }
                 _ => {
                     // Limit FPS (Frames per second) to around 144
@@ -67,7 +69,7 @@ fn main() -> Result<()> {
                 }
             }
 
-            unsafe { app.device_wait_idle() }.unwrap_or_else(|e| {
+            unsafe { app.device().device().device_wait_idle() }.unwrap_or_else(|e| {
                 eprintln!("Device failed to wait idle!: {:?}", e);
                 *control_flow = ControlFlow::ExitWithCode(0x20);
             });

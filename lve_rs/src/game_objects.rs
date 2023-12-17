@@ -2,16 +2,24 @@ use std::{cell::RefCell, rc::Rc};
 
 pub type ObjectId = u32;
 
+#[derive(PartialEq)]
 pub struct TransformComponent2D {
     pub translation: glm::Vec2,
     pub scale: glm::Vec2,
     pub rotation: f32,
 }
 
+#[derive(PartialEq)]
+pub struct RigidBodyComponent2D {
+    pub velocity: glm::Vec2,
+    pub mass: f32,
+}
+
 pub struct GameObject {
     pub color: glm::Vec3,
     pub model: Rc<RefCell<crate::Model>>,
     pub transform_2d: TransformComponent2D,
+    pub rigit_body_2d: RigidBodyComponent2D,
     id: ObjectId,
 }
 
@@ -35,9 +43,8 @@ impl GameObject {
             id: object_id,
             model,
             color: glm::Vec3::default(),
-            transform_2d: TransformComponent2D {
-                ..Default::default()
-            },
+            transform_2d: TransformComponent2D::default(),
+            rigit_body_2d: RigidBodyComponent2D::default(),
         }
     }
 
@@ -60,6 +67,15 @@ impl Default for TransformComponent2D {
             translation: glm::Vec2::default(),
             scale: glm::vec2(1., 1.),
             rotation: 0.,
+        }
+    }
+}
+
+impl Default for RigidBodyComponent2D {
+    fn default() -> Self {
+        Self {
+            velocity: glm::vec2(0., 0.),
+            mass: 1.0,
         }
     }
 }

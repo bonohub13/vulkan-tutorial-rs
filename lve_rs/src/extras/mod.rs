@@ -1,6 +1,8 @@
 use anyhow::Result;
 use std::{cell::RefCell, rc::Rc};
 
+pub mod gravity_physics_system;
+
 pub fn serpinski(
     top: &crate::Vertex,
     right: &crate::Vertex,

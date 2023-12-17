@@ -96,8 +96,13 @@ impl App {
     }
 
     #[inline]
-    pub fn window(&self) -> &Window {
-        &self.window.window()
+    pub fn window(&self) -> &lve_rs::Window {
+        &self.window
+    }
+
+    #[inline]
+    pub const fn device(&self) -> &lve_rs::Device {
+        &self.device
     }
 
     #[inline]
@@ -108,6 +113,43 @@ impl App {
     #[inline]
     pub unsafe fn device_wait_idle(&self) -> Result<()> {
         Ok(self.device.device().device_wait_idle()?)
+    }
+
+    #[inline]
+    pub fn begin_frame(
+        &mut self,
+        control_flow: Option<&mut ControlFlow>,
+    ) -> Result<vk::CommandBuffer> {
+        self.renderer
+            .begin_frame(&self.window, &self.device, control_flow)
+    }
+
+    #[inline]
+    pub fn end_frame(&mut self, control_flow: Option<&mut ControlFlow>) -> Result<()> {
+        self.renderer
+            .end_frame(&mut self.window, &self.device, control_flow)
+    }
+
+    #[inline]
+    pub unsafe fn begin_swap_chain_render_pass(&self, command_buffer: &vk::CommandBuffer) {
+        self.renderer
+            .begin_swap_chain_render_pass(&self.device, command_buffer)
+    }
+
+    #[inline]
+    pub unsafe fn end_swap_chain_render_pass(&self, command_buffer: &vk::CommandBuffer) {
+        self.renderer
+            .end_swap_chain_render_pass(&self.device, command_buffer)
+    }
+
+    #[inline]
+    pub unsafe fn render_game_objects(
+        &self,
+        command_buffer: &vk::CommandBuffer,
+        game_objects: &mut Vec<lve_rs::GameObject>,
+    ) {
+        self.simple_render_system
+            .render_game_objects(&self.device, *command_buffer, game_objects)
     }
 
     fn load_game_object(
