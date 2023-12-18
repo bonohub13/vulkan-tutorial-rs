@@ -5,8 +5,7 @@ use std::mem::size_of;
 #[derive(Default)]
 #[repr(C, align(16))]
 pub struct SimplePushConstantData {
-    transform: glm::Mat2,
-    offset: glm::Vec2,
+    transform: glm::Mat4,
     color: glm::Vec3,
 }
 
@@ -38,9 +37,9 @@ impl SimpleRenderSystem {
         command_buffer: vk::CommandBuffer,
         game_objects: &mut Vec<crate::GameObject>,
     ) {
-        for (i, game_object) in game_objects.iter_mut().enumerate() {
-            game_object.transform_2d.rotation = glm::modf(
-                game_object.transform_2d.rotation + 0.001 * (i + 1) as f32,
+        for game_object in game_objects.iter_mut() {
+            game_object.transform.rotation.y = glm::modf(
+                game_object.transform.rotation.y + 0.01,
                 2.0 * std::f32::consts::PI,
             );
         }
@@ -48,13 +47,11 @@ impl SimpleRenderSystem {
         self.pipeline.bind(device, &command_buffer);
         for game_object in game_objects.iter_mut() {
             let push = SimplePushConstantData {
-                transform: game_object.transform_2d.mat2(),
-                offset: game_object.transform_2d.translation,
+                transform: game_object.transform.mat4(),
                 color: game_object.color,
             };
             let offsets = {
                 let transform = bytemuck::offset_of!(SimplePushConstantData, transform) as u32;
-                let offset = bytemuck::offset_of!(SimplePushConstantData, offset) as u32;
                 let color = bytemuck::offset_of!(SimplePushConstantData, color) as u32;
                 let aligned_offset = |offset: u32| {
                     if offset % 16 == 0 {
@@ -64,11 +61,7 @@ impl SimpleRenderSystem {
                     }
                 };
 
-                [
-                    aligned_offset(transform),
-                    aligned_offset(offset),
-                    aligned_offset(color),
-                ]
+                [aligned_offset(transform), aligned_offset(color)]
             };
 
             device.device().cmd_push_constants(
@@ -83,13 +76,6 @@ impl SimpleRenderSystem {
                 self.pipeline_layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 offsets[1],
-                bytemuck::cast_slice(push.offset.as_slice()),
-            );
-            device.device().cmd_push_constants(
-                command_buffer,
-                self.pipeline_layout,
-                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                offsets[2],
                 bytemuck::cast_slice(push.color.as_slice()),
             );
             game_object.model.borrow().bind(device, &command_buffer);

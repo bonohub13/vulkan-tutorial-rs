@@ -2,30 +2,29 @@ use std::{cell::RefCell, rc::Rc};
 
 pub type ObjectId = u32;
 
-pub struct TransformComponent2D {
-    pub translation: glm::Vec2,
-    pub scale: glm::Vec2,
-    pub rotation: f32,
+pub struct TransformComponent {
+    pub translation: glm::Vec3,
+    pub scale: glm::Vec3,
+    pub rotation: glm::Vec3,
 }
 
 pub struct GameObject {
     pub color: glm::Vec3,
     pub model: Rc<RefCell<crate::Model>>,
-    pub transform_2d: TransformComponent2D,
+    pub transform: TransformComponent,
     id: ObjectId,
 }
 
-impl TransformComponent2D {
-    pub fn mat2(&self) -> glm::Mat2 {
-        let rotation_mat = {
-            let s = (-self.rotation).sin();
-            let c = (-self.rotation).cos();
+impl TransformComponent {
+    pub fn mat4(&self) -> glm::Mat4 {
+        let mut transform = glm::translation(&self.translation);
 
-            glm::mat2(c, s, -s, c)
-        };
-        let scale_mat = glm::mat2(self.scale.x, 0., 0., self.scale.y);
+        // YXZ (Tait-Bryan method)
+        transform = glm::rotate(&transform, self.rotation.y, &glm::vec3(0., 1., 0.));
+        transform = glm::rotate(&transform, self.rotation.x, &glm::vec3(1., 0., 0.));
+        transform = glm::rotate(&transform, self.rotation.z, &glm::vec3(0., 0., 1.));
 
-        rotation_mat * scale_mat
+        glm::scale(&transform, &self.scale)
     }
 }
 
@@ -35,7 +34,7 @@ impl GameObject {
             id: object_id,
             model,
             color: glm::Vec3::default(),
-            transform_2d: TransformComponent2D {
+            transform: TransformComponent {
                 ..Default::default()
             },
         }
@@ -54,12 +53,12 @@ impl GameObject {
     }
 }
 
-impl Default for TransformComponent2D {
+impl Default for TransformComponent {
     fn default() -> Self {
         Self {
-            translation: glm::Vec2::default(),
-            scale: glm::vec2(1., 1.),
-            rotation: 0.,
+            translation: glm::Vec3::default(),
+            scale: glm::vec3(1., 1., 1.),
+            rotation: glm::Vec3::default(),
         }
     }
 }

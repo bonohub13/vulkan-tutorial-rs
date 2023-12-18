@@ -114,21 +114,14 @@ impl App {
         game_objects: &mut Vec<lve_rs::GameObject>,
         device: &lve_rs::Device,
     ) -> Result<()> {
-        let vertices = [
-            lve_rs::Vertex::new(&[0.0f32, -0.5f32], &[1.0, 0., 0.]),
-            lve_rs::Vertex::new(&[0.5f32, 0.5f32], &[0., 1., 0.]),
-            lve_rs::Vertex::new(&[-0.5f32, 0.5f32], &[0., 0., 1.]),
-        ];
-        let model = lve_rs::Model::new(device, &vertices)?;
-        let mut triangle =
-            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(model))) };
+        let model = lve_rs::create_cube_model(device, &[0., 0., 0.])?;
+        let mut cube =
+            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) };
 
-        triangle.color = glm::vec3(0.1, 0.8, 0.1);
-        triangle.transform_2d.translation.x = 0.2;
-        triangle.transform_2d.scale = glm::vec2(2.0, 0.5);
-        triangle.transform_2d.rotation = 0.5 * std::f32::consts::PI;
+        cube.transform.translation = glm::vec3(0., 0., 0.5);
+        cube.transform.scale = glm::vec3(0.5, 0.5, 0.5);
 
-        *game_objects = vec![triangle];
+        *game_objects = vec![cube];
 
         Ok(())
     }

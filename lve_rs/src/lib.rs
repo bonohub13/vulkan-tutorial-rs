@@ -12,13 +12,14 @@ mod window;
 
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
-pub use game_objects::{GameObject, ObjectId, TransformComponent2D};
+pub use game_objects::{GameObject, ObjectId, TransformComponent};
 pub use model::{Model, Vertex};
 pub use pipeline::Pipeline;
 pub use renderer::Renderer;
 pub use simple_render_system::{SimplePushConstantData, SimpleRenderSystem};
 pub use surface::{Surface, SwapChainSupportDetails};
 pub use swap_chain::SwapChain;
+pub use utils::create_cube_model;
 pub use window::Window;
 
 extern crate nalgebra_glm as glm;
@@ -27,9 +28,71 @@ use ash::vk;
 use std::ffi::CStr;
 
 mod utils {
+    use anyhow::Result;
+
     #[inline]
     pub fn is_debug_build() -> bool {
         cfg!(debug_assertions)
+    }
+
+    pub fn create_cube_model(
+        device: &crate::Device,
+        offset: &[f32; 3],
+    ) -> Result<Box<crate::Model>> {
+        let offset = glm::Vec3::from_row_slice(offset);
+        let vertices = [
+            // left face
+            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.9, 0.9]),
+            crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.9, 0.9, 0.9]),
+            crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.9, 0.9, 0.9]),
+            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.9, 0.9]),
+            crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.9, 0.9, 0.9]),
+            crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.9, 0.9, 0.9]),
+            // right face
+            crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.8, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.8, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.8, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.8, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.8, 0.1]),
+            // top face
+            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.6, 0.1]),
+            crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.9, 0.6, 0.1]),
+            crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.9, 0.6, 0.1]),
+            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.6, 0.1]),
+            crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.9, 0.6, 0.1]),
+            crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.9, 0.6, 0.1]),
+            // bottom face
+            crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.8, 0.1, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.1, 0.1]),
+            crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.8, 0.1, 0.1]),
+            crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.8, 0.1, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.8, 0.1, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.1, 0.1]),
+            // front face
+            crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
+            crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
+            crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
+            crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
+            // back face
+            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
+            crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
+            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
+            crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
+        ]
+        .iter_mut()
+        .map(|v| {
+            v.position += offset;
+
+            v.clone()
+        })
+        .collect::<Vec<_>>();
+
+        Ok(Box::new(crate::Model::new(device, &vertices)?))
     }
 }
 

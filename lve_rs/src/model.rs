@@ -5,7 +5,7 @@ use std::mem::{align_of, size_of, size_of_val};
 
 #[derive(Clone, Copy)]
 pub struct Vertex {
-    pub position: glm::Vec2,
+    pub position: glm::Vec3,
     pub color: glm::Vec3,
 }
 
@@ -16,9 +16,9 @@ pub struct Model {
 }
 
 impl Vertex {
-    pub fn new(position: &[f32; 2], color: &[f32; 3]) -> Self {
+    pub fn new(position: &[f32; 3], color: &[f32; 3]) -> Self {
         Self {
-            position: glm::Vec2::from_row_slice(position),
+            position: glm::Vec3::from_row_slice(position),
             color: glm::Vec3::from_row_slice(color),
         }
     }
@@ -36,7 +36,7 @@ impl Vertex {
             vk::VertexInputAttributeDescription::builder()
                 .location(0)
                 .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
+                .format(vk::Format::R32G32B32_SFLOAT)
                 .offset(offset_of!(Vertex::position).into())
                 .build(),
             vk::VertexInputAttributeDescription::builder()

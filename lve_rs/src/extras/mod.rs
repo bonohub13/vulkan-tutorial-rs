@@ -16,9 +16,9 @@ pub fn serpinski(
 
 pub unsafe fn multiple_triangles(device: &crate::Device) -> Result<Vec<crate::GameObject>> {
     let vertices = [
-        crate::Vertex::new(&[0.0f32, -0.5f32], &[1.0, 0., 0.]),
-        crate::Vertex::new(&[0.5f32, 0.5f32], &[0., 1., 0.]),
-        crate::Vertex::new(&[-0.5f32, 0.5f32], &[0., 0., 1.]),
+        crate::Vertex::new(&[0.0f32, -0.5f32, 0.0], &[1.0, 0., 0.]),
+        crate::Vertex::new(&[0.5f32, 0.5f32, 0.0], &[0., 1., 0.]),
+        crate::Vertex::new(&[-0.5f32, 0.5f32, 0.0], &[0., 0., 1.]),
     ];
     let colors = [
         glm::vec3(1., 0.7, 0.73),
@@ -37,8 +37,8 @@ pub unsafe fn multiple_triangles(device: &crate::Device) -> Result<Vec<crate::Ga
         let mut triangle = crate::GameObject::create_game_object(model);
         let offset = i as f32;
 
-        triangle.transform_2d.scale = (0.5 + offset * 0.025) * glm::vec2(1., 1.);
-        triangle.transform_2d.rotation = std::f32::consts::PI * 0.025 * offset;
+        triangle.transform.scale = (0.5 + offset * 0.025) * glm::vec3(1., 1., 1.);
+        triangle.transform.rotation.y = std::f32::consts::PI * 0.025 * offset;
         triangle.color = colors[i as usize % colors.len()];
 
         triangles.push(triangle);
