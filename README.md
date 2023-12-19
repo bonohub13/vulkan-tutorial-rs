@@ -7,16 +7,16 @@ Out of pure curiosity, I wanted to learn Vulkan. \
 But Instead of doing it the straight forward way, I felt like doing it in Rust.
 
 ## How does this work?
-Each branch represents the codes in each videos. \
-Ex) Branch `Tutorial_01` matches the code in [Tutorial 01](https://www.youtube.com/watch?v=lr93-_cC8v4&list=PL8327DO66nu9qYVKLDmdLW_84-yE4auCR&index=2&t=10s&pp=iAQB).
+Each tag represents the codes in each videos. \
+Ex) Tag `tutorial_01` matches the code in [Tutorial 01](https://www.youtube.com/watch?v=lr93-_cC8v4&list=PL8327DO66nu9qYVKLDmdLW_84-yE4auCR&index=2&t=10s&pp=iAQB).
 #### How do you view each code corresponding to the videos?
-For people who are unfamilliar with Git, this is how you change branches.
+For people who are unfamilliar with Git, this is how you switch between tages.
 ```
-git switch <branch name>
+git checkout <tag name>
 ```
 ex. If you want to switch over to `Tutorial_01`
 ```
-git swich tutorial_01
+git checktout tutorial_01
 ```
 
 ## How do you build this?
