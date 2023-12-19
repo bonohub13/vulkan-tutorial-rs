@@ -49,16 +49,16 @@ There are 2 ways you can build the codes.
             ```
 
 ## Wishes
-Please feel free to file an issue if there are wierd implementation, bad codes, bugs, and etc. \
+Please feel free to file an issue if there are wierd implementation, bad codes, bugs, and etc. 
 It really helps to keep this fresh and working. \
-However, please **DO NOT** post requests of porting this to other Vulkan crates such as Vulkano, WGPU, etc. \
+However, please **DO NOT** post requests of porting this to other Vulkan crates such as Vulkano, WGPU, etc. 
 I want to keep this focused only on Ash since the structure of the library closely resembles that of Vulkan. \
-That way, if I and others want to add changes or search for some implementation, the Vulkan documentation \
+That way, if I and others want to add changes or search for some implementation, the Vulkan documentation 
 will be a viable resource. \
 Other feature requests are fine and are welcome ;-)
 
 ## Finally
 Greatest gratitude towards [Brenden Galea](https://www.youtube.com/@BrendanGalea) for such an awesome tutorial. \
-Although being a complete NOOB for graphics API, it was very easy to watch and follow. \
-If you happen to end up here and found this interesting, PLEASE consider subscribing to his channel. \
+Although being a complete NOOB for graphics API, it was very easy to watch and follow. 
+If you happen to end up here and found this interesting, PLEASE consider subscribing to his channel. 
 Without his tutorial, this would have never been possible.
