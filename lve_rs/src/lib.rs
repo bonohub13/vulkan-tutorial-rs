@@ -1,3 +1,4 @@
+mod camera;
 mod debug;
 mod device;
 pub mod extras;
@@ -10,6 +11,7 @@ mod surface;
 mod swap_chain;
 mod window;
 
+pub use camera::Camera;
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
 pub use game_objects::{GameObject, ObjectId, TransformComponent};

@@ -33,6 +33,10 @@ impl Renderer {
         self.swap_chain.render_pass()
     }
 
+    pub fn aspect_ratio(&self) -> f32 {
+        self.swap_chain.extent_aspect_ratio() as f32
+    }
+
     pub const fn swap_chain(&self) -> &crate::SwapChain {
         &self.swap_chain
     }

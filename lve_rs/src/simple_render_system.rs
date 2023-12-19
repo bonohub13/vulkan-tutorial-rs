@@ -36,6 +36,7 @@ impl SimpleRenderSystem {
         device: &crate::Device,
         command_buffer: vk::CommandBuffer,
         game_objects: &mut Vec<crate::GameObject>,
+        camera: &crate::Camera,
     ) {
         for game_object in game_objects.iter_mut() {
             game_object.transform.rotation.y = glm::modf(
@@ -51,7 +52,7 @@ impl SimpleRenderSystem {
         self.pipeline.bind(device, &command_buffer);
         for game_object in game_objects.iter_mut() {
             let push = SimplePushConstantData {
-                transform: game_object.transform.mat4(),
+                transform: camera.projection() * game_object.transform.mat4(),
                 color: game_object.color,
             };
             let offsets = {

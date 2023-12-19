@@ -13,6 +13,7 @@ pub struct App {
     device: lve_rs::Device,
     renderer: lve_rs::Renderer,
     simple_render_system: lve_rs::SimpleRenderSystem,
+    camera: lve_rs::Camera,
     game_objects: Vec<lve_rs::GameObject>,
 }
 
@@ -48,17 +49,27 @@ impl App {
 
         let simple_render_system =
             lve_rs::SimpleRenderSystem::new(&device, renderer.swap_chain_render_pass())?;
+        let camera = lve_rs::Camera::new();
 
         Ok(Self {
             window,
             device,
             renderer,
             simple_render_system,
+            camera,
             game_objects,
         })
     }
 
     pub fn draw_frame(&mut self, mut control_flow: Option<&mut ControlFlow>) -> Result<()> {
+        let aspect = self.renderer.aspect_ratio();
+        /*
+        self.camera
+            .set_orthographic_projection(-aspect, aspect, -1.0, 1.0, -1.0, 1.0);
+        */
+        self.camera
+            .set_perspective_projection(f32::to_radians(50.0), aspect, 0.1, 10.0);
+
         let command_buffer = self.renderer.begin_frame(
             &self.window,
             &self.device,
@@ -77,6 +88,7 @@ impl App {
                     &self.device,
                     command_buffer,
                     &mut self.game_objects,
+                    &self.camera,
                 );
                 self.renderer
                     .end_swap_chain_render_pass(&self.device, &command_buffer);
@@ -118,7 +130,7 @@ impl App {
         let mut cube =
             unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) };
 
-        cube.transform.translation = glm::vec3(0., 0., 0.5);
+        cube.transform.translation = glm::vec3(0., 0., 2.5);
         cube.transform.scale = glm::vec3(0.5, 0.5, 0.5);
 
         *game_objects = vec![cube];
