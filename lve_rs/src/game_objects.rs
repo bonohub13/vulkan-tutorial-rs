@@ -17,14 +17,35 @@ pub struct GameObject {
 
 impl TransformComponent {
     pub fn mat4(&self) -> glm::Mat4 {
-        let mut transform = glm::translation(&self.translation);
+        let cosine = self
+            .rotation
+            .into_iter()
+            .map(|xyz| xyz.cos())
+            .collect::<Vec<_>>();
+        let sine = self
+            .rotation
+            .into_iter()
+            .map(|xyz| xyz.sin())
+            .collect::<Vec<_>>();
 
-        // YXZ (Tait-Bryan method)
-        transform = glm::rotate(&transform, self.rotation.y, &glm::vec3(0., 1., 0.));
-        transform = glm::rotate(&transform, self.rotation.x, &glm::vec3(1., 0., 0.));
-        transform = glm::rotate(&transform, self.rotation.z, &glm::vec3(0., 0., 1.));
-
-        glm::scale(&transform, &self.scale)
+        glm::mat4(
+            self.scale.x * (cosine[1] * cosine[2] + sine[1] * sine[0] * sine[2]),
+            self.scale.y * (cosine[2] * sine[1] * sine[0] - cosine[1] * sine[2]),
+            self.scale.z * (cosine[0] * sine[1]),
+            self.translation.x,
+            self.scale.x * (cosine[0] * sine[2]),
+            self.scale.y * (cosine[0] * cosine[2]),
+            self.scale.z * (-sine[0]),
+            self.translation.y,
+            self.scale.x * (cosine[1] * sine[0] * sine[2] - cosine[2] * sine[1]),
+            self.scale.y * (cosine[1] * cosine[2] * sine[0] + sine[1] * sine[2]),
+            self.scale.z * (cosine[1] * cosine[0]),
+            self.translation.z,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
     }
 }
 

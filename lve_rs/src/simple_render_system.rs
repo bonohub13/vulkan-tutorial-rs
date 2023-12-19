@@ -42,6 +42,10 @@ impl SimpleRenderSystem {
                 game_object.transform.rotation.y + 0.01,
                 2.0 * std::f32::consts::PI,
             );
+            game_object.transform.rotation.x = glm::modf(
+                game_object.transform.rotation.x + 0.005,
+                2.0 * std::f32::consts::PI,
+            );
         }
 
         self.pipeline.bind(device, &command_buffer);
