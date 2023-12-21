@@ -2,10 +2,11 @@ mod app;
 
 use anyhow::{bail, Result};
 use app::App;
-use std::borrow::BorrowMut;
-use std::time;
+use std::{borrow::BorrowMut, time};
 use winit::{
-    event::{Event, StartCause, WindowEvent},
+    event::{
+        DeviceEvent, ElementState, Event, KeyboardInput, StartCause, VirtualKeyCode, WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
@@ -13,12 +14,19 @@ use winit::{
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
     let mut app = App::new(&event_loop, None, None)?;
+    let mut current_time = time::Instant::now();
+    let mut keys_pressed: [Option<VirtualKeyCode>; 10] =
+        [None, None, None, None, None, None, None, None, None, None];
+
     let result = event_loop
         .borrow_mut()
         .run_return(move |event, _, control_flow| {
-            let start_time = time::Instant::now();
-
             control_flow.set_poll();
+
+            let new_time = time::Instant::now();
+            let frame_time = (new_time - current_time).as_secs_f32();
+
+            current_time = new_time;
 
             match event {
                 Event::WindowEvent {
@@ -37,14 +45,41 @@ fn main() -> Result<()> {
                     }
                     _ => (),
                 },
+                Event::DeviceEvent { event, .. } => match event {
+                    DeviceEvent::Key(KeyboardInput {
+                        state,
+                        virtual_keycode,
+                        ..
+                    }) => match state {
+                        ElementState::Pressed => {
+                            if !keys_pressed.contains(&virtual_keycode) {
+                                if let Some(key_unassigned) =
+                                    keys_pressed.iter_mut().filter(|key| key.is_none()).next()
+                                {
+                                    *key_unassigned = virtual_keycode;
+                                }
+                            }
+                        }
+                        ElementState::Released => {
+                            if let Some(key_assigned) = keys_pressed
+                                .iter_mut()
+                                .filter(|key| **key == virtual_keycode)
+                                .next()
+                            {
+                                *key_assigned = None
+                            }
+                        }
+                    },
+                    _ => (),
+                },
                 Event::RedrawRequested(_) => {}
                 Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {}
-                Event::MainEventsCleared => {
-                    app.draw_frame(Some(control_flow)).unwrap_or_else(|e| {
+                Event::MainEventsCleared => app
+                    .draw_frame(Some(control_flow), frame_time, &keys_pressed)
+                    .unwrap_or_else(|e| {
                         eprintln!("{:?}", e);
                         *control_flow = ControlFlow::ExitWithCode(0x10);
-                    })
-                }
+                    }),
                 _ => (),
             }
 
@@ -52,19 +87,7 @@ fn main() -> Result<()> {
                 ControlFlow::Exit | ControlFlow::ExitWithCode(_) => {
                     unsafe { app.device_wait_idle() }.unwrap()
                 }
-                _ => {
-                    // Limit FPS (Frames per second) to around 144
-                    let elapsed_time =
-                        time::Instant::now().duration_since(start_time).as_micros() as i128;
-                    let new_inst = {
-                        let wait_microsecond =
-                            (App::MILLISECONDS_PER_FRAME as i128 - elapsed_time).max(0);
-
-                        start_time + time::Duration::from_micros(wait_microsecond as u64)
-                    };
-
-                    *control_flow = ControlFlow::WaitUntil(new_inst);
-                }
+                _ => {}
             }
 
             unsafe { app.device_wait_idle() }.unwrap_or_else(|e| {

@@ -1,4 +1,5 @@
 mod camera;
+pub mod controller;
 mod debug;
 mod device;
 pub mod extras;

@@ -38,21 +38,12 @@ impl SimpleRenderSystem {
         game_objects: &mut Vec<crate::GameObject>,
         camera: &crate::Camera,
     ) {
-        for game_object in game_objects.iter_mut() {
-            game_object.transform.rotation.y = glm::modf(
-                game_object.transform.rotation.y + 0.01,
-                2.0 * std::f32::consts::PI,
-            );
-            game_object.transform.rotation.x = glm::modf(
-                game_object.transform.rotation.x + 0.005,
-                2.0 * std::f32::consts::PI,
-            );
-        }
+        let projection_view = camera.projection() * camera.view();
 
         self.pipeline.bind(device, &command_buffer);
         for game_object in game_objects.iter_mut() {
             let push = SimplePushConstantData {
-                transform: camera.projection() * game_object.transform.mat4(),
+                transform: projection_view * game_object.transform.mat4(),
                 color: game_object.color,
             };
             let offsets = {

@@ -2,6 +2,7 @@ use anyhow::Result;
 use ash::vk;
 use std::{cell::RefCell, rc::Rc};
 use winit::{
+    event::VirtualKeyCode,
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -14,6 +15,8 @@ pub struct App {
     renderer: lve_rs::Renderer,
     simple_render_system: lve_rs::SimpleRenderSystem,
     camera: lve_rs::Camera,
+    camera_controller: lve_rs::controller::keyboard::KeyboardMovementController,
+    viewer_object: lve_rs::GameObject,
     game_objects: Vec<lve_rs::GameObject>,
 }
 
@@ -49,7 +52,22 @@ impl App {
 
         let simple_render_system =
             lve_rs::SimpleRenderSystem::new(&device, renderer.swap_chain_render_pass())?;
-        let camera = lve_rs::Camera::new();
+        let mut camera = lve_rs::Camera::new();
+        let camera_controller = lve_rs::controller::keyboard::KeyboardMovementController::new();
+        let viewer_object = {
+            let viewer = lve_rs::Model::new(
+                &device,
+                &[
+                    lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
+                    lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
+                    lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
+                ],
+            )?;
+
+            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(viewer))) }
+        };
+
+        camera.set_view_target(&[-1.0, -2.0, 2.0], &[0.0, 0.0, 2.5], None);
 
         Ok(Self {
             window,
@@ -57,16 +75,34 @@ impl App {
             renderer,
             simple_render_system,
             camera,
+            camera_controller,
+            viewer_object,
             game_objects,
         })
     }
 
-    pub fn draw_frame(&mut self, mut control_flow: Option<&mut ControlFlow>) -> Result<()> {
+    pub fn draw_frame(
+        &mut self,
+        mut control_flow: Option<&mut ControlFlow>,
+        delta_time: f32,
+        keys: &[Option<VirtualKeyCode>],
+    ) -> Result<()> {
         let aspect = self.renderer.aspect_ratio();
-        /*
-        self.camera
-            .set_orthographic_projection(-aspect, aspect, -1.0, 1.0, -1.0, 1.0);
-        */
+
+        self.camera_controller
+            .move_in_plane_xz(delta_time, &mut self.viewer_object, keys);
+        self.camera.set_view_xyz(
+            &[
+                self.viewer_object.transform.translation.x,
+                self.viewer_object.transform.translation.y,
+                self.viewer_object.transform.translation.z,
+            ],
+            &[
+                self.viewer_object.transform.rotation.x,
+                self.viewer_object.transform.rotation.y,
+                self.viewer_object.transform.rotation.z,
+            ],
+        );
         self.camera
             .set_perspective_projection(f32::to_radians(50.0), aspect, 0.1, 10.0);
 
@@ -145,6 +181,7 @@ impl Drop for App {
             for game_object in self.game_objects.iter() {
                 game_object.model.borrow_mut().destroy(&self.device);
             }
+            self.viewer_object.model.borrow_mut().destroy(&self.device);
             self.simple_render_system.destroy(&self.device);
             self.renderer.destroy(&self.device);
             self.device.destroy();
