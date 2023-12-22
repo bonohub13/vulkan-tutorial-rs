@@ -12,3 +12,4 @@ lve_rs = { path = "./lve_rs" }
 ash = "0.37.3"
 nalgebra-glm = "0.18.0"
 bytemuck = "1.14.0"
+rayon = "1.8.0"
