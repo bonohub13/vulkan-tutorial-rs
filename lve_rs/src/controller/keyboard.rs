@@ -1,5 +1,4 @@
 use winit::event::VirtualKeyCode;
-use rayon::prelude::*;
 
 pub struct KeyMappings {
     pub move_left: VirtualKeyCode,
@@ -36,7 +35,7 @@ impl KeyboardMovementController {
         keys: &[Option<VirtualKeyCode>],
     ) {
         let keys_pressed = keys
-            .par_iter()
+            .iter()
             .filter(|key| key.is_some())
             .map(|key| key.unwrap())
             .collect::<Vec<_>>();

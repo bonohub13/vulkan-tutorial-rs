@@ -10,7 +10,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
-use rayon::prelude::*;
 
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
@@ -55,7 +54,7 @@ fn main() -> Result<()> {
                         ElementState::Pressed => {
                             if !keys_pressed.contains(&virtual_keycode) {
                                 if let Some(key_unassigned) =
-                                    keys_pressed.par_iter_mut().filter(|key| key.is_none()).next()
+                                    keys_pressed.iter_mut().filter(|key| key.is_none()).next()
                                 {
                                     *key_unassigned = virtual_keycode;
                                 }
@@ -63,7 +62,7 @@ fn main() -> Result<()> {
                         }
                         ElementState::Released => {
                             if let Some(key_assigned) = keys_pressed
-                                .par_iter_mut()
+                                .iter_mut()
                                 .filter(|key| **key == virtual_keycode)
                                 .next()
                             {
