@@ -20,11 +20,11 @@ pub struct KeyboardMovementController {
 }
 
 impl KeyboardMovementController {
-    pub fn new() -> Self {
+    pub fn new(move_speed: f32, look_speed: f32) -> Self {
         Self {
             keys: KeyMappings::default(),
-            move_speed: 3.0,
-            look_speed: 1.5,
+            move_speed,
+            look_speed,
         }
     }
 
@@ -112,6 +112,16 @@ impl Default for KeyMappings {
             look_right: VirtualKeyCode::Right,
             look_up: VirtualKeyCode::Up,
             look_down: VirtualKeyCode::Down,
+        }
+    }
+}
+
+impl Default for KeyboardMovementController {
+    fn default() -> Self {
+        Self {
+            keys: KeyMappings::default(),
+            move_speed: 3.0,
+            look_speed: 1.5,
         }
     }
 }

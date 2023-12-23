@@ -263,7 +263,7 @@ impl Device {
         Ok(())
     }
 
-    pub fn copy_buffer(
+    pub unsafe fn copy_buffer(
         &self,
         src_buffer: &vk::Buffer,
         dst_buffer: &vk::Buffer,
@@ -275,15 +275,13 @@ impl Device {
             .dst_offset(0)
             .size(size);
 
-        unsafe {
-            self.device.cmd_copy_buffer(
-                command_buffer,
-                *src_buffer,
-                *dst_buffer,
-                std::slice::from_ref(&copy_region),
-            );
-            self.end_single_time_commands(&command_buffer)
-        }?;
+        self.device.cmd_copy_buffer(
+            command_buffer,
+            *src_buffer,
+            *dst_buffer,
+            std::slice::from_ref(&copy_region),
+        );
+        self.end_single_time_commands(&command_buffer)?;
 
         Ok(())
     }

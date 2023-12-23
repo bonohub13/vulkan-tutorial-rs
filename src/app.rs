@@ -53,16 +53,16 @@ impl App {
         let simple_render_system =
             lve_rs::SimpleRenderSystem::new(&device, renderer.swap_chain_render_pass())?;
         let mut camera = lve_rs::Camera::new();
-        let camera_controller = lve_rs::controller::keyboard::KeyboardMovementController::new();
+        let camera_controller =
+            lve_rs::controller::keyboard::KeyboardMovementController::new(15.0, 10.0);
         let viewer_object = {
-            let viewer = lve_rs::Model::new(
-                &device,
-                &[
+            let viewer = lve_rs::Model::builder()
+                .vertices(&[
                     lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
                     lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
                     lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
-                ],
-            )?;
+                ])
+                .build(&device)?;
 
             unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(viewer))) }
         };

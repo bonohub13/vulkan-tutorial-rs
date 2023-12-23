@@ -48,44 +48,32 @@ mod utils {
             crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.9, 0.9]),
             crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.9, 0.9, 0.9]),
             crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.9, 0.9, 0.9]),
-            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.9, 0.9]),
             crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.9, 0.9, 0.9]),
-            crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.9, 0.9, 0.9]),
             // right face
             crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.8, 0.8, 0.1]),
             crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.8, 0.1]),
             crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.8, 0.8, 0.1]),
-            crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.8, 0.8, 0.1]),
             crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.8, 0.8, 0.1]),
-            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.8, 0.1]),
             // top face
             crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.6, 0.1]),
             crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.9, 0.6, 0.1]),
             crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.9, 0.6, 0.1]),
-            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.9, 0.6, 0.1]),
             crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.9, 0.6, 0.1]),
-            crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.9, 0.6, 0.1]),
             // bottom face
             crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.8, 0.1, 0.1]),
             crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.1, 0.1]),
             crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.8, 0.1, 0.1]),
-            crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.8, 0.1, 0.1]),
             crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.8, 0.1, 0.1]),
-            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.8, 0.1, 0.1]),
             // front face
             crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
             crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
             crate::Vertex::new(&[-0.5f32, 0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
-            crate::Vertex::new(&[-0.5f32, -0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
             crate::Vertex::new(&[0.5f32, -0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
-            crate::Vertex::new(&[0.5f32, 0.5f32, 0.5f32], &[0.1, 0.1, 0.8]),
             // back face
             crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
             crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
             crate::Vertex::new(&[-0.5f32, 0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
-            crate::Vertex::new(&[-0.5f32, -0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
             crate::Vertex::new(&[0.5f32, -0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
-            crate::Vertex::new(&[0.5f32, 0.5f32, -0.5f32], &[0.1, 0.8, 0.1]),
         ]
         .iter_mut()
         .map(|v| {
@@ -94,8 +82,15 @@ mod utils {
             v.clone()
         })
         .collect::<Vec<_>>();
+        let model = crate::Model::builder()
+            .vertices(&vertices)
+            .indices(&[
+                0, 1, 2, 0, 3, 1, 4, 5, 6, 4, 7, 5, 8, 9, 10, 8, 11, 9, 12, 13, 14, 12, 15, 13, 16,
+                17, 18, 16, 19, 17, 20, 21, 22, 20, 23, 21,
+            ])
+            .build(device)?;
 
-        Ok(Box::new(crate::Model::new(device, &vertices)?))
+        Ok(Box::new(model))
     }
 }
 

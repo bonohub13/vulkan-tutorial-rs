@@ -33,7 +33,11 @@ pub unsafe fn multiple_triangles(device: &crate::Device) -> Result<Vec<crate::Ga
     let mut triangles = vec![];
 
     for i in 0..40 {
-        let model = Rc::new(RefCell::new(crate::Model::new(device, &vertices)?));
+        let model = {
+            let model = crate::Model::builder().vertices(&vertices).build(device)?;
+
+            Rc::new(RefCell::new(model))
+        };
         let mut triangle = crate::GameObject::create_game_object(model);
         let offset = i as f32;
 
