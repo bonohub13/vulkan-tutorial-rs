@@ -8,6 +8,7 @@ PROJECT_NAME := $(shell pwd | sed "s#.*/##")
 DOCKER_IMAGE_NAME := $(shell pwd | sed "s#.*/##" | tr [:upper:] [:lower:])
 BIN := ${PROJECT_NAME}
 SRC_DIR := src
+SCRIPT_DIR := scripts
 LIB_DIR := 
 CARGO_TOML := Cargo.toml
 
@@ -46,6 +47,9 @@ build-linux-image:
 	docker build . -t ${PROJECT_NAME}/linux -f docker/Dockerfile.linux
 	rm docker/Cargo.toml
 
+build-gdown-image:
+	docker build . -t ${PROJECT_NAME}/gdown -f docker/Dockerfile.gdown
+
 rebuild-linux-image:
 	cp Cargo.toml docker
 	docker build . -t ${DOCKER_IMAGE_NAME}/linux -f docker/Dockerfile.linux --no-cache
@@ -59,8 +63,15 @@ docker-release:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/linux bash \
 		-c "make release"
 
+grab-models:
+	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/gdown sh \
+		-c "source ${SCRIPT_DIR}/grab_models.sh"
+
 docker-debug:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/linux bash
+
+docker-debug-gdown:
+	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/gdown sh
 
 docker-run: docker-build run
 

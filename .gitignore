@@ -3,3 +3,5 @@
 /shaders/*.spv
 /Cargo.lock
 /lve_rs/Cargo.lock
+/models
+/.venv

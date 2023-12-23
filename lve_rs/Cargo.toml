@@ -14,3 +14,4 @@ raw-window-handle = "0.5.0"
 nalgebra-glm = "0.18.0"
 offset = "0.1.4"
 bytemuck = "1.14.0"
+tobj = {version = "4.0.0", default-features = false}
