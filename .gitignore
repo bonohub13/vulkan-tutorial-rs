@@ -1,2 +1,5 @@
 /target
 /lve_rs/target
+/shaders/*.spv
+/Cargo.lock
+/lve_rs/Cargo.lock
