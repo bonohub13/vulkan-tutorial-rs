@@ -1,4 +1,4 @@
-use crate::utils as lve_utils;
+use crate::__utils as lve_utils;
 use anyhow::{bail, Context, Result};
 use ash::{extensions::khr as vk_khr, vk};
 use raw_window_handle::HasRawDisplayHandle;

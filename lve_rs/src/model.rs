@@ -1,12 +1,19 @@
 use anyhow::Result;
 use ash::vk;
 use offset::offset_of;
-use std::mem::{align_of, size_of, size_of_val};
+use ordered_float::OrderedFloat;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    mem::{align_of, size_of, size_of_val},
+};
 
 #[derive(Clone, Copy)]
 pub struct Vertex {
     pub position: glm::Vec3,
     pub color: glm::Vec3,
+    pub normal: glm::Vec3,
+    pub uv: glm::Vec2,
 }
 
 pub struct ModelBuilder {
@@ -29,6 +36,8 @@ impl Vertex {
         Self {
             position: glm::Vec3::from_row_slice(position),
             color: glm::Vec3::from_row_slice(color),
+            normal: glm::Vec3::zeros(),
+            uv: glm::Vec2::zeros(),
         }
     }
 
@@ -66,6 +75,78 @@ impl ModelBuilder {
         }
     }
 
+    pub fn load_model(&self, filepath: &str) -> Self {
+        let (shapes, _) = match tobj::load_obj(filepath, &tobj::LoadOptions::default()) {
+            Ok((shapes, materials)) => match materials {
+                Ok(materials) => (shapes, materials),
+                Err(err) => {
+                    eprintln!("Materials not available: {}", err);
+                    (shapes, vec![])
+                }
+            },
+            Err(err) => panic!("{}\n\tFailed to load file: {}", err, filepath),
+        };
+
+        let mut unique_vertices = HashMap::new();
+        let mut indices = vec![];
+        let mut vertices = vec![];
+        for shape in shapes.iter() {
+            for ((vertex_index, normal_index), tex_coord_index) in shape
+                .mesh
+                .indices
+                .iter()
+                .zip(shape.mesh.normal_indices.iter())
+                .zip(shape.mesh.texcoord_indices.iter())
+            {
+                let vertex = Vertex {
+                    position: if !shape.mesh.positions.is_empty() {
+                        glm::vec3(
+                            shape.mesh.positions[3 * (*vertex_index) as usize + 0],
+                            shape.mesh.positions[3 * (*vertex_index) as usize + 1],
+                            shape.mesh.positions[3 * (*vertex_index) as usize + 2],
+                        )
+                    } else {
+                        glm::Vec3::zeros()
+                    },
+                    normal: if !shape.mesh.normals.is_empty() {
+                        glm::vec3(
+                            shape.mesh.normals[3 * (*normal_index) as usize + 0],
+                            shape.mesh.normals[3 * (*normal_index) as usize + 1],
+                            shape.mesh.normals[3 * (*normal_index) as usize + 2],
+                        )
+                    } else {
+                        glm::Vec3::zeros()
+                    },
+                    uv: if !shape.mesh.texcoords.is_empty() {
+                        glm::vec2(
+                            shape.mesh.texcoords[2 * (*tex_coord_index) as usize + 0],
+                            shape.mesh.texcoords[2 * (*tex_coord_index) as usize + 1],
+                        )
+                    } else {
+                        glm::Vec2::zeros()
+                    },
+                    color: if !shape.mesh.vertex_color.is_empty() {
+                        glm::vec3(
+                            shape.mesh.vertex_color[3 * (*vertex_index) as usize + 0],
+                            shape.mesh.vertex_color[3 * (*vertex_index) as usize + 1],
+                            shape.mesh.vertex_color[3 * (*vertex_index) as usize + 2],
+                        )
+                    } else {
+                        glm::vec3(1.0, 1.0, 1.0)
+                    },
+                };
+
+                if !unique_vertices.contains_key(&vertex) {
+                    unique_vertices.insert(vertex, vertices.len());
+                    vertices.push(vertex);
+                }
+                indices.push(unique_vertices[&vertex] as u32);
+            }
+        }
+
+        Self { vertices, indices }
+    }
+
     pub fn vertices(&self, vertices: &[Vertex]) -> Self {
         Self {
             vertices: vertices.to_vec(),
@@ -101,6 +182,14 @@ impl Model {
             index_count,
             has_index_buffer,
         })
+    }
+
+    pub fn create_model_from_file(device: &crate::Device, filepath: &str) -> Result<Box<Self>> {
+        let builder = Self::builder().load_model(filepath);
+
+        println!("Vertex count: {}", builder.vertices.len());
+
+        Ok(Box::new(builder.build(device)?))
     }
 
     pub fn builder() -> ModelBuilder {
@@ -259,5 +348,42 @@ impl Model {
             index_count as u32,
             has_index_buffer,
         ))
+    }
+}
+
+impl Default for Vertex {
+    fn default() -> Self {
+        Self {
+            position: glm::Vec3::default(),
+            normal: glm::Vec3::default(),
+            uv: glm::Vec2::default(),
+            color: glm::vec3(1., 1., 1.),
+        }
+    }
+}
+
+impl PartialEq for Vertex {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position
+            && self.color == other.color
+            && self.normal == other.normal
+            && self.uv == other.uv
+    }
+}
+
+impl Eq for Vertex {}
+
+impl Hash for Vertex {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.position
+            .iter()
+            .for_each(|pos| OrderedFloat(*pos).hash(state));
+        self.color
+            .iter()
+            .for_each(|rgb| OrderedFloat(*rgb).hash(state));
+        self.normal
+            .iter()
+            .for_each(|normal| OrderedFloat(*normal).hash(state));
+        self.uv.iter().for_each(|uv| OrderedFloat(*uv).hash(state));
     }
 }
