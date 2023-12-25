@@ -63,6 +63,18 @@ impl Vertex {
                 .format(vk::Format::R32G32B32_SFLOAT)
                 .offset(offset_of!(Vertex::color).into())
                 .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .location(2)
+                .binding(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(offset_of!(Vertex::normal).into())
+                .build(),
+            vk::VertexInputAttributeDescription::builder()
+                .location(3)
+                .binding(0)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(offset_of!(Vertex::uv).into())
+                .build(),
         ]
     }
 }

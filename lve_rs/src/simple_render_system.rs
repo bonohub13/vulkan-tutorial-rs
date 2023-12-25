@@ -6,7 +6,7 @@ use std::mem::size_of;
 #[repr(C, align(16))]
 pub struct SimplePushConstantData {
     transform: glm::Mat4,
-    color: glm::Vec3,
+    normal_matrix: glm::Mat4,
 }
 
 pub struct SimpleRenderSystem {
@@ -42,13 +42,14 @@ impl SimpleRenderSystem {
 
         self.pipeline.bind(device, &command_buffer);
         for game_object in game_objects.iter_mut() {
+            let model_matrix = game_object.transform.mat4();
             let push = SimplePushConstantData {
-                transform: projection_view * game_object.transform.mat4(),
-                color: game_object.color,
+                transform: projection_view * model_matrix,
+                normal_matrix: game_object.transform.normal_matrix(),
             };
             let offsets = {
                 let transform = bytemuck::offset_of!(SimplePushConstantData, transform) as u32;
-                let color = bytemuck::offset_of!(SimplePushConstantData, color) as u32;
+                let color = bytemuck::offset_of!(SimplePushConstantData, normal_matrix) as u32;
                 let aligned_offset = |offset: u32| {
                     if offset % 16 == 0 {
                         offset
@@ -72,7 +73,7 @@ impl SimpleRenderSystem {
                 self.pipeline_layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 offsets[1],
-                bytemuck::cast_slice(push.color.as_slice()),
+                bytemuck::cast_slice(push.normal_matrix.as_slice()),
             );
             game_object.model.borrow().bind(device, &command_buffer);
             game_object.model.borrow().draw(device, &command_buffer);

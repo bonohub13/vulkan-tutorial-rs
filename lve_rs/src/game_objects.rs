@@ -47,6 +47,47 @@ impl TransformComponent {
             1.0,
         )
     }
+
+    pub fn normal_matrix(&self) -> glm::Mat4 {
+        let cosine = self
+            .rotation
+            .into_iter()
+            .map(|xyz| xyz.cos())
+            .collect::<Vec<_>>();
+        let sine = self
+            .rotation
+            .into_iter()
+            .map(|xyz| xyz.sin())
+            .collect::<Vec<_>>();
+        let inv_scale = glm::Vec3::from_column_slice(
+            &self.scale.iter().map(|xyz| 1.0 / xyz).collect::<Vec<_>>(),
+        );
+
+        /* NOTE:
+         *  The size of normal matrix must be Mat 4x4!
+         *  nalgebra_glm does not convert mat3x3 into mat4x4 with padding,
+         *  how the C++ glm library does.
+         *  This causes a bug.
+         */
+        glm::mat4(
+            inv_scale.x * (cosine[1] * cosine[2] + sine[1] * sine[0] * sine[2]),
+            inv_scale.y * (cosine[2] * sine[1] * sine[0] - cosine[1] * sine[2]),
+            inv_scale.z * (cosine[0] * sine[1]),
+            0.0,
+            inv_scale.x * (cosine[0] * sine[2]),
+            inv_scale.y * (cosine[0] * cosine[2]),
+            inv_scale.z * (-sine[0]),
+            0.0,
+            inv_scale.x * (cosine[1] * sine[0] * sine[2] - cosine[2] * sine[1]),
+            inv_scale.y * (cosine[1] * cosine[2] * sine[0] + sine[1] * sine[2]),
+            inv_scale.z * (cosine[1] * cosine[0]),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+    }
 }
 
 impl GameObject {
