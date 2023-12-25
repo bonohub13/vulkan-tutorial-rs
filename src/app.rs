@@ -166,8 +166,8 @@ impl App {
         let mut game_obj =
             unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) };
 
-        game_obj.transform.translation = glm::vec3(0., 0., 2.5);
-        game_obj.transform.scale = 3.0f32 * glm::vec3(1.0, 1.0, 1.0);
+        game_obj.transform.translation = glm::vec3(0., 0.5, 2.5);
+        game_obj.transform.scale = 3.0f32 * glm::vec3(1.0, 0.5, 1.0);
 
         *game_objects = vec![game_obj];
 

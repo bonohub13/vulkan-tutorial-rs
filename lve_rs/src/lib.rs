@@ -10,7 +10,6 @@ mod renderer;
 mod simple_render_system;
 mod surface;
 mod swap_chain;
-pub mod utils;
 mod window;
 
 pub use __utils::create_cube_model;
