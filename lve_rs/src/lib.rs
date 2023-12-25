@@ -10,8 +10,10 @@ mod renderer;
 mod simple_render_system;
 mod surface;
 mod swap_chain;
+pub mod utils;
 mod window;
 
+pub use __utils::create_cube_model;
 pub use camera::Camera;
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
@@ -22,7 +24,6 @@ pub use renderer::Renderer;
 pub use simple_render_system::{SimplePushConstantData, SimpleRenderSystem};
 pub use surface::{Surface, SwapChainSupportDetails};
 pub use swap_chain::SwapChain;
-pub use utils::create_cube_model;
 pub use window::Window;
 
 extern crate nalgebra_glm as glm;
@@ -30,7 +31,7 @@ extern crate nalgebra_glm as glm;
 use ash::vk;
 use std::ffi::CStr;
 
-mod utils {
+mod __utils {
     use anyhow::Result;
 
     #[inline]

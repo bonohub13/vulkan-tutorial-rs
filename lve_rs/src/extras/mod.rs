@@ -66,14 +66,17 @@ fn serpinski_triangle(
         let top_right = crate::Vertex {
             position: 0.5f32 * (top.position + right.position),
             color: 0.5f32 * (top.color + right.color),
+            ..Default::default()
         };
         let right_left = crate::Vertex {
             position: 0.5f32 * (right.position + left.position),
             color: 0.5f32 * (right.color + left.color),
+            ..Default::default()
         };
         let left_top = crate::Vertex {
             position: 0.5f32 * (left.position + top.position),
             color: 0.5f32 * (left.color + top.color),
+            ..Default::default()
         };
 
         serpinski_triangle(vertices, &left_top, &right_left, &left, depth - 1);

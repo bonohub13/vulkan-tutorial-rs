@@ -54,7 +54,7 @@ impl App {
             lve_rs::SimpleRenderSystem::new(&device, renderer.swap_chain_render_pass())?;
         let mut camera = lve_rs::Camera::new();
         let camera_controller =
-            lve_rs::controller::keyboard::KeyboardMovementController::new(15.0, 10.0);
+            lve_rs::controller::keyboard::KeyboardMovementController::new(9.0, 4.25);
         let viewer_object = {
             let viewer = lve_rs::Model::builder()
                 .vertices(&[
@@ -162,14 +162,14 @@ impl App {
         game_objects: &mut Vec<lve_rs::GameObject>,
         device: &lve_rs::Device,
     ) -> Result<()> {
-        let model = lve_rs::create_cube_model(device, &[0., 0., 0.])?;
-        let mut cube =
+        let model = lve_rs::Model::create_model_from_file(device, "models/smooth_vase.obj")?;
+        let mut game_obj =
             unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) };
 
-        cube.transform.translation = glm::vec3(0., 0., 2.5);
-        cube.transform.scale = glm::vec3(0.5, 0.5, 0.5);
+        game_obj.transform.translation = glm::vec3(0., 0., 2.5);
+        game_obj.transform.scale = 3.0f32 * glm::vec3(1.0, 1.0, 1.0);
 
-        *game_objects = vec![cube];
+        *game_objects = vec![game_obj];
 
         Ok(())
     }
