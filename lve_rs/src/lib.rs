@@ -1,3 +1,4 @@
+mod buffer;
 mod camera;
 pub mod controller;
 mod debug;
@@ -13,6 +14,7 @@ mod swap_chain;
 mod window;
 
 pub use __utils::create_cube_model;
+pub use buffer::Buffer;
 pub use camera::Camera;
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
