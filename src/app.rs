@@ -24,17 +24,16 @@ pub struct App {
     camera: lve_rs::Camera,
     camera_controller: lve_rs::controller::keyboard::KeyboardMovementController,
     viewer_object: lve_rs::GameObject,
+    global_pool: Box<lve_rs::DescriptorPool>,
     game_objects: Vec<lve_rs::GameObject>,
+    global_descriptor_sets: Vec<vk::DescriptorSet>,
+    global_set_layout: Box<lve_rs::DescriptorSetLayout>,
     ubo_buffers: Vec<Box<lve_rs::Buffer>>,
 }
 
 impl App {
     pub const WIDTH: i32 = 1280;
     pub const HEIGHT: i32 = 800;
-    pub const FRAMES_PER_SECOND_LIMIT: u64 = 144;
-    pub const MICROSECONDS_IN_SECOND: u64 = 1_000_000;
-    pub const MILLISECONDS_PER_FRAME: u64 =
-        ((Self::MICROSECONDS_IN_SECOND / Self::FRAMES_PER_SECOND_LIMIT) / 100 + 1) * 100;
 
     pub fn new<T>(
         event_loop: &EventLoop<T>,
@@ -54,12 +53,17 @@ impl App {
         let window = lve_rs::Window::new(event_loop, width, height, "Hello Vulkan!")?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
         let renderer = lve_rs::Renderer::new(&window, &device)?;
+        let global_pool = lve_rs::DescriptorPool::builder()
+            .set_max_sets(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32)
+            .add_pool_size(
+                vk::DescriptorType::UNIFORM_BUFFER,
+                lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32,
+            )
+            .build(&device)?;
         let mut game_objects = vec![];
 
         Self::load_game_object(&mut game_objects, &device)?;
 
-        let simple_render_system =
-            lve_rs::SimpleRenderSystem::new(&device, renderer.swap_chain_render_pass())?;
         let mut camera = lve_rs::Camera::new();
         let camera_controller =
             lve_rs::controller::keyboard::KeyboardMovementController::new(9.0, 4.25);
@@ -74,7 +78,21 @@ impl App {
 
             unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(viewer))) }
         };
+        let global_set_layout = lve_rs::DescriptorSetLayout::builder()
+            .add_binding(
+                0,
+                vk::DescriptorType::UNIFORM_BUFFER,
+                vk::ShaderStageFlags::VERTEX,
+                None,
+            )
+            .build(&device)?;
+        let simple_render_system = lve_rs::SimpleRenderSystem::new(
+            &device,
+            renderer.swap_chain_render_pass(),
+            &global_set_layout.descriptor_set_layout(),
+        )?;
         let mut ubo_buffers = Vec::with_capacity(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize);
+        let mut global_descriptor_sets = vec![];
 
         for i in 0..lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize {
             ubo_buffers.push(Box::new(lve_rs::Buffer::new(
@@ -86,6 +104,15 @@ impl App {
                 Some(device.properties.limits.min_uniform_buffer_offset_alignment),
             )?));
             unsafe { ubo_buffers[i].map(&device, None, None) }?;
+            let buffer_info = ubo_buffers[i].descriptor_info(None, None);
+            global_descriptor_sets.push(
+                unsafe {
+                    lve_rs::DescriptorWriter::new(&global_set_layout, &global_pool)
+                        .write_buffer(0, &buffer_info)
+                        .build(&device)
+                }
+                .0,
+            );
         }
 
         camera.set_view_target(&[-1.0, -2.0, 2.0], &[0.0, 0.0, 2.5], None);
@@ -98,7 +125,10 @@ impl App {
             camera,
             camera_controller,
             viewer_object,
+            global_pool,
             game_objects,
+            global_descriptor_sets,
+            global_set_layout,
             ubo_buffers,
         })
     }
@@ -145,6 +175,7 @@ impl App {
                 frame_time: delta_time,
                 command_buffer,
                 camera: &self.camera,
+                global_descriptor_set: self.global_descriptor_sets[frame_index],
             };
             // update
             let ubo = GlobalUbo {
@@ -231,6 +262,7 @@ impl Default for GlobalUbo {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
+            self.global_set_layout.destroy(&self.device);
             self.ubo_buffers
                 .iter_mut()
                 .for_each(|ubo_buffer| ubo_buffer.destroy(&self.device));
@@ -239,6 +271,7 @@ impl Drop for App {
                 game_object.model.borrow_mut().destroy(&self.device);
             }
             self.game_objects.clear();
+            self.global_pool.destroy(&self.device);
             self.viewer_object.model.borrow_mut().destroy(&self.device);
             self.simple_render_system.destroy(&self.device);
             self.renderer.destroy(&self.device);

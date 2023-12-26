@@ -5,7 +5,7 @@ use std::mem::size_of;
 #[derive(Default)]
 #[repr(C, align(16))]
 pub struct SimplePushConstantData {
-    transform: glm::Mat4,
+    model_matrix: glm::Mat4,
     normal_matrix: glm::Mat4,
 }
 
@@ -15,8 +15,12 @@ pub struct SimpleRenderSystem {
 }
 
 impl SimpleRenderSystem {
-    pub fn new(device: &crate::Device, render_pass: &vk::RenderPass) -> Result<Self> {
-        let pipeline_layout = Self::create_pipeline_layout(device)?;
+    pub fn new(
+        device: &crate::Device,
+        render_pass: &vk::RenderPass,
+        global_set_layout: &vk::DescriptorSetLayout,
+    ) -> Result<Self> {
+        let pipeline_layout = Self::create_pipeline_layout(device, global_set_layout)?;
         let pipeline = Self::create_pipeline(device, &pipeline_layout, render_pass)?;
         Ok(Self {
             pipeline_layout,
@@ -37,17 +41,24 @@ impl SimpleRenderSystem {
         frame_info: &crate::FrameInfo,
         game_objects: &mut Vec<crate::GameObject>,
     ) {
-        let projection_view = frame_info.camera.projection() * frame_info.camera.view();
+        let device_ref = device.device();
 
         self.pipeline.bind(device, &frame_info.command_buffer);
+        device_ref.cmd_bind_descriptor_sets(
+            frame_info.command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline_layout,
+            0,
+            std::slice::from_ref(&frame_info.global_descriptor_set),
+            &[],
+        );
         for game_object in game_objects.iter_mut() {
-            let model_matrix = game_object.transform.mat4();
             let push = SimplePushConstantData {
-                transform: projection_view * model_matrix,
+                model_matrix: game_object.transform.mat4(),
                 normal_matrix: game_object.transform.normal_matrix(),
             };
             let offsets = {
-                let transform = bytemuck::offset_of!(SimplePushConstantData, transform) as u32;
+                let transform = bytemuck::offset_of!(SimplePushConstantData, model_matrix) as u32;
                 let color = bytemuck::offset_of!(SimplePushConstantData, normal_matrix) as u32;
                 let aligned_offset = |offset: u32| {
                     if offset % 16 == 0 {
@@ -60,14 +71,14 @@ impl SimpleRenderSystem {
                 [aligned_offset(transform), aligned_offset(color)]
             };
 
-            device.device().cmd_push_constants(
+            device_ref.cmd_push_constants(
                 frame_info.command_buffer,
                 self.pipeline_layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 0,
-                bytemuck::cast_slice(push.transform.as_slice()),
+                bytemuck::cast_slice(push.model_matrix.as_slice()),
             );
-            device.device().cmd_push_constants(
+            device_ref.cmd_push_constants(
                 frame_info.command_buffer,
                 self.pipeline_layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
@@ -85,14 +96,18 @@ impl SimpleRenderSystem {
         }
     }
 
-    fn create_pipeline_layout(device: &crate::Device) -> Result<vk::PipelineLayout> {
+    fn create_pipeline_layout(
+        device: &crate::Device,
+        global_set_layout: &vk::DescriptorSetLayout,
+    ) -> Result<vk::PipelineLayout> {
         let push_constant_range = vk::PushConstantRange::builder()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
             .size(size_of::<SimplePushConstantData>() as u32)
             .build();
+        let descriptor_set_layouts = vec![*global_set_layout];
         let create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&[])
+            .set_layouts(&descriptor_set_layouts)
             .push_constant_ranges(std::slice::from_ref(&push_constant_range));
         let pipeline_layout =
             unsafe { device.device().create_pipeline_layout(&create_info, None) }?;
