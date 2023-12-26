@@ -5,7 +5,7 @@ use ordered_float::OrderedFloat;
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    mem::{align_of, size_of, size_of_val},
+    mem::{size_of, size_of_val},
 };
 
 #[derive(Clone, Copy)]
@@ -22,11 +22,9 @@ pub struct ModelBuilder {
 }
 
 pub struct Model {
-    vertex_buffer: vk::Buffer,
-    vertex_buffer_memory: vk::DeviceMemory,
+    vertex_buffer: Box<crate::Buffer>,
     vertex_count: u32,
-    index_buffer: vk::Buffer,
-    index_buffer_memory: vk::DeviceMemory,
+    index_buffer: Box<crate::Buffer>,
     index_count: u32,
     has_index_buffer: bool,
 }
@@ -180,17 +178,14 @@ impl ModelBuilder {
 
 impl Model {
     pub fn new(device: &crate::Device, vertices: &[Vertex], indices: &[u32]) -> Result<Self> {
-        let (vertex_buffer, vertex_buffer_memory, vertex_count) =
-            Self::create_vertex_buffers(device, vertices)?;
-        let (index_buffer, index_buffer_memory, index_count, has_index_buffer) =
+        let (vertex_buffer, vertex_count) = Self::create_vertex_buffers(device, vertices)?;
+        let (index_buffer, index_count, has_index_buffer) =
             Self::create_index_buffers(device, indices)?;
 
         Ok(Self {
             vertex_buffer,
-            vertex_buffer_memory,
             vertex_count,
             index_buffer,
-            index_buffer_memory,
             index_count,
             has_index_buffer,
         })
@@ -212,36 +207,28 @@ impl Model {
     }
 
     pub unsafe fn destroy(&mut self, device: &crate::Device) {
-        let device_ref = device.device();
-
-        if self.vertex_buffer != vk::Buffer::null() {
-            device_ref.destroy_buffer(self.vertex_buffer, None);
-        }
-        if self.vertex_buffer_memory != vk::DeviceMemory::null() {
-            device_ref.free_memory(self.vertex_buffer_memory, None);
-        }
+        self.vertex_buffer.destroy(device);
 
         if self.has_index_buffer {
-            if self.index_buffer != vk::Buffer::null() {
-                device_ref.destroy_buffer(self.index_buffer, None);
-            }
-            if self.index_buffer_memory != vk::DeviceMemory::null() {
-                device_ref.free_memory(self.index_buffer_memory, None);
-            }
+            self.index_buffer.destroy(device);
         }
     }
 
     #[inline]
     pub unsafe fn bind(&self, device: &crate::Device, command_buffer: &vk::CommandBuffer) {
         let device_ref = device.device();
-        let buffers = [self.vertex_buffer];
         let offsets = [0];
 
-        device_ref.cmd_bind_vertex_buffers(*command_buffer, 0, &buffers, &offsets);
+        device_ref.cmd_bind_vertex_buffers(
+            *command_buffer,
+            0,
+            std::slice::from_ref(self.vertex_buffer.buffer()),
+            &offsets,
+        );
         if self.has_index_buffer {
             device_ref.cmd_bind_index_buffer(
                 *command_buffer,
-                self.index_buffer,
+                *self.index_buffer.buffer(),
                 0,
                 vk::IndexType::UINT32,
             )
@@ -262,104 +249,85 @@ impl Model {
     fn create_vertex_buffers(
         device: &crate::Device,
         vertices: &[Vertex],
-    ) -> Result<(vk::Buffer, vk::DeviceMemory, u32)> {
+    ) -> Result<(Box<crate::Buffer>, u32)> {
         let vertex_count = vertices.len();
 
         assert!(vertex_count >= 3, "Vertex count must be at least 3");
 
-        let device_ref = device.device();
         let buffer_size = size_of_val(&vertices[0]) * vertex_count;
-        let (staging_buffer, staging_buffer_memory) = device.create_buffer(
-            buffer_size as u64,
+        let vertex_size = size_of_val(&vertices[0]);
+        let mut staging_buffer = crate::Buffer::new(
+            device,
+            vertex_size as u64,
+            vertex_count,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            None,
         )?;
-        let (vertex_buffer, vertex_buffer_memory) = device.create_buffer(
-            buffer_size as u64,
+        let vertex_buffer = Box::new(crate::Buffer::new(
+            device,
+            vertex_size as u64,
+            vertex_count,
             vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        )?;
-        let data = unsafe {
-            device_ref.map_memory(
-                staging_buffer_memory,
-                0,
+            None,
+        )?);
+        unsafe { staging_buffer.map(device, None, None) }?;
+        unsafe { staging_buffer.write_to_buffer(device, vertices, None, None) }
+        unsafe {
+            device.copy_buffer(
+                staging_buffer.buffer(),
+                vertex_buffer.buffer(),
                 buffer_size as u64,
-                vk::MemoryMapFlags::empty(),
             )
         }?;
-        let mut align = unsafe {
-            let mem_size = device_ref.get_buffer_memory_requirements(staging_buffer);
+        unsafe { staging_buffer.destroy(device) };
 
-            ash::util::Align::<Vertex>::new(data, align_of::<Vertex>() as u64, mem_size.size)
-        };
-
-        align.copy_from_slice(vertices);
-        unsafe { device_ref.unmap_memory(staging_buffer_memory) };
-        unsafe { device.copy_buffer(&staging_buffer, &vertex_buffer, buffer_size as u64) }?;
-        unsafe {
-            device_ref.destroy_buffer(staging_buffer, None);
-            device_ref.free_memory(staging_buffer_memory, None);
-        }
-
-        Ok((vertex_buffer, vertex_buffer_memory, vertex_count as u32))
+        Ok((vertex_buffer, vertex_count as u32))
     }
 
     fn create_index_buffers(
         device: &crate::Device,
         indices: &[u32],
-    ) -> Result<(vk::Buffer, vk::DeviceMemory, u32, bool)> {
+    ) -> Result<(Box<crate::Buffer>, u32, bool)> {
         let index_count = indices.len();
         let has_index_buffer = index_count > 0;
 
         if !has_index_buffer {
-            return Ok((
-                vk::Buffer::null(),
-                vk::DeviceMemory::null(),
-                0,
-                has_index_buffer,
-            ));
+            return Ok((Box::new(crate::Buffer::null()), 0, has_index_buffer));
         }
 
-        let device_ref = device.device();
         let buffer_size = size_of_val(&indices[0]) * index_count;
-        let (staging_buffer, staging_buffer_memory) = device.create_buffer(
-            buffer_size as u64,
+        let index_size = size_of_val(&indices[0]);
+        let mut staging_buffer = crate::Buffer::new(
+            device,
+            index_size as u64,
+            index_count,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            None,
         )?;
-        let (index_buffer, index_buffer_memory) = device.create_buffer(
-            buffer_size as u64,
+        let index_buffer = Box::new(crate::Buffer::new(
+            device,
+            index_size as u64,
+            index_count,
             vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        )?;
-        let data = unsafe {
-            device_ref.map_memory(
-                staging_buffer_memory,
-                0,
+            None,
+        )?);
+
+        unsafe { staging_buffer.map(device, None, None) }?;
+        unsafe { staging_buffer.write_to_buffer(device, indices, None, None) }
+        unsafe {
+            device.copy_buffer(
+                staging_buffer.buffer(),
+                index_buffer.buffer(),
                 buffer_size as u64,
-                vk::MemoryMapFlags::empty(),
             )
         }?;
-        let mut align = unsafe {
-            let mem_size = device_ref.get_buffer_memory_requirements(staging_buffer);
+        unsafe { staging_buffer.destroy(device) }
 
-            ash::util::Align::<u32>::new(data, align_of::<u32>() as u64, mem_size.size)
-        };
-
-        align.copy_from_slice(indices);
-        unsafe { device_ref.unmap_memory(staging_buffer_memory) };
-        unsafe { device.copy_buffer(&staging_buffer, &index_buffer, buffer_size as u64) }?;
-        unsafe {
-            device_ref.destroy_buffer(staging_buffer, None);
-            device_ref.free_memory(staging_buffer_memory, None)
-        }
-
-        Ok((
-            index_buffer,
-            index_buffer_memory,
-            index_count as u32,
-            has_index_buffer,
-        ))
+        Ok((index_buffer, index_count as u32, has_index_buffer))
     }
 }
 

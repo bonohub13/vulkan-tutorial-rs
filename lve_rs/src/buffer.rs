@@ -48,6 +48,20 @@ impl Buffer {
         })
     }
 
+    pub fn null() -> Self {
+        Self {
+            mapped: None,
+            buffer: vk::Buffer::null(),
+            memory: vk::DeviceMemory::null(),
+            buffer_size: 0,
+            instance_size: 0,
+            instance_count: 0,
+            alignment_size: 0,
+            usage_flags: vk::BufferUsageFlags::empty(),
+            memory_property_flags: vk::MemoryPropertyFlags::empty(),
+        }
+    }
+
     pub unsafe fn destroy(&mut self, device: &crate::Device) {
         let device_ref = device.device();
 
@@ -92,14 +106,15 @@ impl Buffer {
         }
     }
 
-    pub unsafe fn write_to_buffer<T: Copy + Clone>(
+    pub unsafe fn write_to_buffer<T: Copy + Clone + Sized>(
         &mut self,
-        data: *const c_void,
+        device: &crate::Device,
+        data: &[T],
         size: Option<vk::DeviceSize>,
         offset: Option<vk::DeviceSize>,
     ) {
         assert!(self.mapped.is_some(), "Cannot copy to unmapped buffer");
-
+        let device = device.device();
         let size = match size {
             Some(size) => size,
             None => vk::WHOLE_SIZE,
@@ -112,19 +127,25 @@ impl Buffer {
         let mapped = self.mapped.unwrap();
 
         if size == vk::WHOLE_SIZE {
-            let mut align =
-                ash::util::Align::<T>::new(mapped, align_of::<T>() as u64, self.buffer_size);
+            let mut align = {
+                let mem_size = device.get_buffer_memory_requirements(self.buffer);
 
-            align.copy_from_slice(std::slice::from_raw_parts(
-                data as *const T,
-                self.buffer_size as usize,
-            ));
+                ash::util::Align::<T>::new(mapped, align_of::<T>() as u64, mem_size.size)
+            };
+            align.copy_from_slice(data);
         } else {
-            let mem_offset = (mapped as *mut c_char).wrapping_add(offset as usize);
-            let mut align =
-                ash::util::Align::<T>::new(mem_offset as *mut c_void, align_of::<T>() as u64, size);
+            let mem_offset = (mapped as *mut c_char).add(offset as usize);
+            let mut align = {
+                let mem_size = device.get_buffer_memory_requirements(self.buffer);
 
-            align.copy_from_slice(std::slice::from_raw_parts(data as *const T, size as usize));
+                ash::util::Align::<T>::new(
+                    mem_offset as *mut c_void,
+                    align_of::<T>() as u64,
+                    mem_size.size,
+                )
+            };
+
+            align.copy_from_slice(data);
         }
     }
 
@@ -138,7 +159,8 @@ impl Buffer {
         let mapped_range = vk::MappedMemoryRange::builder()
             .memory(self.memory)
             .offset(offset.unwrap_or(0))
-            .size(size.unwrap_or(vk::WHOLE_SIZE));
+            .size(size.unwrap_or(vk::WHOLE_SIZE))
+            .build();
 
         device_ref.flush_mapped_memory_ranges(std::slice::from_ref(&mapped_range))?;
 
@@ -167,7 +189,8 @@ impl Buffer {
         let mapped_range = vk::MappedMemoryRange::builder()
             .memory(self.memory)
             .offset(offset.unwrap_or(0))
-            .size(size.unwrap_or(vk::WHOLE_SIZE));
+            .size(size.unwrap_or(vk::WHOLE_SIZE))
+            .build();
 
         device_ref.invalidate_mapped_memory_ranges(std::slice::from_ref(&mapped_range))?;
 
@@ -176,10 +199,12 @@ impl Buffer {
 
     pub unsafe fn write_to_index<T: Clone + Copy>(
         &mut self,
-        data: *const c_void,
+        device: &crate::Device,
+        data: &[T],
         index: vk::DeviceSize,
     ) {
         self.write_to_buffer::<T>(
+            device,
             data,
             Some(self.instance_size),
             Some(index * self.alignment_size),
