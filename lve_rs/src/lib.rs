@@ -1,8 +1,10 @@
+mod buffer;
 mod camera;
 pub mod controller;
 mod debug;
 mod device;
 pub mod extras;
+mod frame_info;
 mod game_objects;
 mod model;
 mod pipeline;
@@ -13,9 +15,11 @@ mod swap_chain;
 mod window;
 
 pub use __utils::create_cube_model;
+pub use buffer::Buffer;
 pub use camera::Camera;
 pub use debug::DebugUtilsMessenger;
 pub use device::{Device, QueryFamilyIndices};
+pub use frame_info::FrameInfo;
 pub use game_objects::{GameObject, ObjectId, TransformComponent};
 pub use model::{Model, Vertex};
 pub use pipeline::Pipeline;

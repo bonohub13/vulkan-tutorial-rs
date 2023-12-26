@@ -10,6 +10,7 @@ pub struct QueryFamilyIndices {
 }
 
 pub struct Device {
+    pub properties: vk::PhysicalDeviceProperties,
     entry: ash::Entry,
     instance: ash::Instance,
     debug_messenger: crate::DebugUtilsMessenger,
@@ -60,13 +61,14 @@ impl Device {
             crate::DebugUtilsMessenger::null(&entry, &instance)
         };
         let surface = window.create_surface(&entry, &instance)?;
-        let physical_device = Self::pick_physical_device(&instance, &surface)?;
+        let (properties, physical_device) = Self::pick_physical_device(&instance, &surface)?;
         let (device, graphics_queue, present_queue) =
             Self::create_device(&instance, &surface, &physical_device)?;
         let command_pool =
             Self::create_command_pool(&instance, &surface, &physical_device, &device)?;
 
         Ok(Self {
+            properties,
             entry,
             instance,
             debug_messenger,
@@ -394,7 +396,7 @@ impl Device {
     fn pick_physical_device(
         instance: &ash::Instance,
         surface: &crate::Surface,
-    ) -> Result<vk::PhysicalDevice> {
+    ) -> Result<(vk::PhysicalDeviceProperties, vk::PhysicalDevice)> {
         let physical_devices = unsafe { instance.enumerate_physical_devices() }?;
 
         if physical_devices.is_empty() {
@@ -421,7 +423,7 @@ impl Device {
             CStr::from_ptr(properties.device_name.as_ptr())
         });
 
-        Ok(physical_device)
+        Ok((properties, physical_device))
     }
 
     fn create_device(

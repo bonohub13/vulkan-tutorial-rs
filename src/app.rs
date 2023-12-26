@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ash::vk;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, mem::size_of, rc::Rc};
 use winit::{
     event::VirtualKeyCode,
     event_loop::{ControlFlow, EventLoop},
@@ -8,6 +8,13 @@ use winit::{
 };
 
 extern crate nalgebra_glm as glm;
+
+#[derive(Debug, Clone, Copy)]
+#[repr(align(64))]
+pub struct GlobalUbo {
+    pub projection_view: glm::Mat4,
+    pub light_direction: glm::Vec3,
+}
 
 pub struct App {
     window: lve_rs::Window,
@@ -18,6 +25,7 @@ pub struct App {
     camera_controller: lve_rs::controller::keyboard::KeyboardMovementController,
     viewer_object: lve_rs::GameObject,
     game_objects: Vec<lve_rs::GameObject>,
+    ubo_buffers: Vec<Box<lve_rs::Buffer>>,
 }
 
 impl App {
@@ -66,6 +74,19 @@ impl App {
 
             unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(viewer))) }
         };
+        let mut ubo_buffers = Vec::with_capacity(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize);
+
+        for i in 0..lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize {
+            ubo_buffers.push(Box::new(lve_rs::Buffer::new(
+                &device,
+                size_of::<GlobalUbo>() as u64,
+                1,
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
+                vk::MemoryPropertyFlags::HOST_VISIBLE,
+                Some(device.properties.limits.min_uniform_buffer_offset_alignment),
+            )?));
+            unsafe { ubo_buffers[i].map(&device, None, None) }?;
+        }
 
         camera.set_view_target(&[-1.0, -2.0, 2.0], &[0.0, 0.0, 2.5], None);
 
@@ -78,6 +99,7 @@ impl App {
             camera_controller,
             viewer_object,
             game_objects,
+            ubo_buffers,
         })
     }
 
@@ -117,14 +139,36 @@ impl App {
         )?;
 
         if command_buffer != vk::CommandBuffer::null() {
+            let frame_index = self.renderer.frame_index();
+            let frame_info = lve_rs::FrameInfo {
+                frame_index,
+                frame_time: delta_time,
+                command_buffer,
+                camera: &self.camera,
+            };
+            // update
+            let ubo = GlobalUbo {
+                projection_view: self.camera.projection() * self.camera.view(),
+                ..Default::default()
+            };
+
+            unsafe {
+                self.ubo_buffers[frame_index].write_to_buffer(
+                    &self.device,
+                    std::slice::from_ref(&ubo),
+                    None,
+                    None,
+                );
+                self.ubo_buffers[frame_index].flush(&self.device, None, None)
+            }?;
+            // render
             unsafe {
                 self.renderer
                     .begin_swap_chain_render_pass(&self.device, &command_buffer);
                 self.simple_render_system.render_game_objects(
                     &self.device,
-                    command_buffer,
+                    &frame_info,
                     &mut self.game_objects,
-                    &self.camera,
                 );
                 self.renderer
                     .end_swap_chain_render_pass(&self.device, &command_buffer);
@@ -175,12 +219,26 @@ impl App {
     }
 }
 
+impl Default for GlobalUbo {
+    fn default() -> Self {
+        Self {
+            projection_view: glm::Mat4::identity(),
+            light_direction: glm::normalize(&glm::vec3(1.0, -3.0, -1.0)),
+        }
+    }
+}
+
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
+            self.ubo_buffers
+                .iter_mut()
+                .for_each(|ubo_buffer| ubo_buffer.destroy(&self.device));
+            self.ubo_buffers.clear();
             for game_object in self.game_objects.iter() {
                 game_object.model.borrow_mut().destroy(&self.device);
             }
+            self.game_objects.clear();
             self.viewer_object.model.borrow_mut().destroy(&self.device);
             self.simple_render_system.destroy(&self.device);
             self.renderer.destroy(&self.device);

@@ -34,13 +34,12 @@ impl SimpleRenderSystem {
     pub unsafe fn render_game_objects(
         &self,
         device: &crate::Device,
-        command_buffer: vk::CommandBuffer,
+        frame_info: &crate::FrameInfo,
         game_objects: &mut Vec<crate::GameObject>,
-        camera: &crate::Camera,
     ) {
-        let projection_view = camera.projection() * camera.view();
+        let projection_view = frame_info.camera.projection() * frame_info.camera.view();
 
-        self.pipeline.bind(device, &command_buffer);
+        self.pipeline.bind(device, &frame_info.command_buffer);
         for game_object in game_objects.iter_mut() {
             let model_matrix = game_object.transform.mat4();
             let push = SimplePushConstantData {
@@ -62,21 +61,27 @@ impl SimpleRenderSystem {
             };
 
             device.device().cmd_push_constants(
-                command_buffer,
+                frame_info.command_buffer,
                 self.pipeline_layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 0,
                 bytemuck::cast_slice(push.transform.as_slice()),
             );
             device.device().cmd_push_constants(
-                command_buffer,
+                frame_info.command_buffer,
                 self.pipeline_layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 offsets[1],
                 bytemuck::cast_slice(push.normal_matrix.as_slice()),
             );
-            game_object.model.borrow().bind(device, &command_buffer);
-            game_object.model.borrow().draw(device, &command_buffer);
+            game_object
+                .model
+                .borrow()
+                .bind(device, &frame_info.command_buffer);
+            game_object
+                .model
+                .borrow()
+                .draw(device, &frame_info.command_buffer);
         }
     }
 
