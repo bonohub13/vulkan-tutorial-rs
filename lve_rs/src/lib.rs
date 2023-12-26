@@ -2,6 +2,7 @@ mod buffer;
 mod camera;
 pub mod controller;
 mod debug;
+mod descriptors;
 mod device;
 pub mod extras;
 mod frame_info;
@@ -18,6 +19,10 @@ pub use __utils::create_cube_model;
 pub use buffer::Buffer;
 pub use camera::Camera;
 pub use debug::DebugUtilsMessenger;
+pub use descriptors::{
+    DescriptorPool, DescriptorPoolBuilder, DescriptorSetLayout, DescriptorSetLayoutBuilder,
+    DescriptorWriter,
+};
 pub use device::{Device, QueryFamilyIndices};
 pub use frame_info::FrameInfo;
 pub use game_objects::{GameObject, ObjectId, TransformComponent};
