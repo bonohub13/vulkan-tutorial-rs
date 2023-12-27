@@ -10,10 +10,11 @@ use winit::{
 extern crate nalgebra_glm as glm;
 
 #[derive(Debug, Clone, Copy)]
-#[repr(align(64))]
 pub struct GlobalUbo {
     pub projection_view: glm::Mat4,
-    pub light_direction: glm::Vec3,
+    pub ambient_light_color: glm::Vec4,
+    pub light_position: glm::Vec4, // Does not work with glm::Vec3
+    pub light_color: glm::Vec4,
 }
 
 pub struct App {
@@ -66,8 +67,8 @@ impl App {
 
         let mut camera = lve_rs::Camera::new();
         let camera_controller =
-            lve_rs::controller::keyboard::KeyboardMovementController::new(9.0, 4.25);
-        let viewer_object = {
+            lve_rs::controller::keyboard::KeyboardMovementController::new(9.0 * 2.0, 4.25 * 2.0);
+        let mut viewer_object = {
             let viewer = lve_rs::Model::builder()
                 .vertices(&[
                     lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
@@ -115,6 +116,7 @@ impl App {
             );
         }
 
+        viewer_object.transform.translation.z = -2.5;
         camera.set_view_target(&[-1.0, -2.0, 2.0], &[0.0, 0.0, 2.5], None);
 
         Ok(Self {
@@ -156,7 +158,7 @@ impl App {
             ],
         );
         self.camera
-            .set_perspective_projection(f32::to_radians(50.0), aspect, 0.1, 10.0);
+            .set_perspective_projection(f32::to_radians(50.0), aspect, 0.1, 100.0);
 
         let command_buffer = self.renderer.begin_frame(
             &self.window,
@@ -237,14 +239,30 @@ impl App {
         game_objects: &mut Vec<lve_rs::GameObject>,
         device: &lve_rs::Device,
     ) -> Result<()> {
-        let model = lve_rs::Model::create_model_from_file(device, "models/smooth_vase.obj")?;
-        let mut game_obj =
-            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) };
+        let mut smooth_vase = {
+            let model = lve_rs::Model::create_model_from_file(device, "models/smooth_vase.obj")?;
 
-        game_obj.transform.translation = glm::vec3(0., 0.5, 2.5);
-        game_obj.transform.scale = 3.0f32 * glm::vec3(1.0, 0.5, 1.0);
+            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) }
+        };
+        let mut flat_vase = {
+            let model = lve_rs::Model::create_model_from_file(device, "models/flat_vase.obj")?;
 
-        *game_objects = vec![game_obj];
+            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) }
+        };
+        let mut floor = {
+            let model = lve_rs::Model::create_model_from_file(device, "models/quad.obj")?;
+
+            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) }
+        };
+
+        smooth_vase.transform.translation = glm::vec3(0.5, 0.5, 0.0);
+        smooth_vase.transform.scale = 3.0f32 * glm::vec3(1.0, 0.5, 1.0);
+        flat_vase.transform.translation = glm::vec3(-0.5, 0.5, 0.0);
+        flat_vase.transform.scale = 3.0f32 * glm::vec3(1.0, 0.5, 1.0);
+        floor.transform.translation = glm::vec3(0., 0.5, 0.);
+        floor.transform.scale = glm::vec3(3.0, 1.0, 3.0);
+
+        *game_objects = vec![smooth_vase, flat_vase, floor];
 
         Ok(())
     }
@@ -254,7 +272,9 @@ impl Default for GlobalUbo {
     fn default() -> Self {
         Self {
             projection_view: glm::Mat4::identity(),
-            light_direction: glm::normalize(&glm::vec3(1.0, -3.0, -1.0)),
+            ambient_light_color: glm::vec4(1.0, 1.0, 1.0, 0.2),
+            light_position: glm::vec4(-1.0, -1.0, -1.0, -1.0),
+            light_color: glm::vec4(1.0, 1.0, 1.0, 1.0),
         }
     }
 }
