@@ -65,7 +65,7 @@ docker-release:
 
 grab-models:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/gdown sh \
-		-c "source ${SCRIPT_DIR}/grab_models.sh"
+		-c "source ${SCRIPT_DIR}/grab_models.sh && source ${SCRIPT_DIR}/grab-pastebin.sh quad"
 
 docker-debug:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/linux bash
