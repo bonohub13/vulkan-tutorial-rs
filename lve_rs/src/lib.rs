@@ -10,9 +10,9 @@ mod game_objects;
 mod model;
 mod pipeline;
 mod renderer;
-mod simple_render_system;
 mod surface;
 mod swap_chain;
+mod systems;
 mod window;
 
 pub use __utils::create_cube_model;
@@ -29,9 +29,9 @@ pub use game_objects::{GameObject, Map, ObjectId, TransformComponent};
 pub use model::{Model, Vertex};
 pub use pipeline::Pipeline;
 pub use renderer::Renderer;
-pub use simple_render_system::{SimplePushConstantData, SimpleRenderSystem};
 pub use surface::{Surface, SwapChainSupportDetails};
 pub use swap_chain::SwapChain;
+pub use systems::{PointLightSystem, SimplePushConstantData, SimpleRenderSystem};
 pub use window::Window;
 
 extern crate nalgebra_glm as glm;

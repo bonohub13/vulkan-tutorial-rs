@@ -11,7 +11,8 @@ extern crate nalgebra_glm as glm;
 
 #[derive(Debug, Clone, Copy)]
 pub struct GlobalUbo {
-    pub projection_view: glm::Mat4,
+    pub projection: glm::Mat4,
+    pub view: glm::Mat4,
     pub ambient_light_color: glm::Vec4,
     pub light_position: glm::Vec4, // Does not work with glm::Vec3
     pub light_color: glm::Vec4,
@@ -22,6 +23,7 @@ pub struct App {
     device: lve_rs::Device,
     renderer: lve_rs::Renderer,
     simple_render_system: lve_rs::SimpleRenderSystem,
+    point_light_system: lve_rs::PointLightSystem,
     camera: lve_rs::Camera,
     camera_controller: lve_rs::controller::keyboard::KeyboardMovementController,
     viewer_object: lve_rs::GameObject,
@@ -92,6 +94,11 @@ impl App {
             renderer.swap_chain_render_pass(),
             &global_set_layout.descriptor_set_layout(),
         )?;
+        let point_light_system = lve_rs::PointLightSystem::new(
+            &device,
+            renderer.swap_chain_render_pass(),
+            &global_set_layout.descriptor_set_layout(),
+        )?;
         let mut ubo_buffers = Vec::with_capacity(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize);
         let mut global_descriptor_sets = vec![];
 
@@ -124,6 +131,7 @@ impl App {
             device,
             renderer,
             simple_render_system,
+            point_light_system,
             camera,
             camera_controller,
             viewer_object,
@@ -182,7 +190,8 @@ impl App {
             };
             // update
             let ubo = GlobalUbo {
-                projection_view: self.camera.projection() * self.camera.view(),
+                projection: *self.camera.projection(),
+                view: *self.camera.view(),
                 ..Default::default()
             };
 
@@ -201,6 +210,7 @@ impl App {
                     .begin_swap_chain_render_pass(&self.device, &command_buffer);
                 self.simple_render_system
                     .render_game_objects(&self.device, &mut frame_info);
+                self.point_light_system.render(&self.device, &frame_info);
                 self.renderer
                     .end_swap_chain_render_pass(&self.device, &command_buffer);
                 self.renderer.end_frame(
@@ -268,7 +278,8 @@ impl App {
 impl Default for GlobalUbo {
     fn default() -> Self {
         Self {
-            projection_view: glm::Mat4::identity(),
+            projection: glm::Mat4::identity(),
+            view: glm::Mat4::identity(),
             ambient_light_color: glm::vec4(1.0, 1.0, 1.0, 0.2),
             light_position: glm::vec4(-1.0, -1.0, -1.0, -1.0),
             light_color: glm::vec4(1.0, 1.0, 1.0, 1.0),
@@ -293,6 +304,7 @@ impl Drop for App {
             self.game_objects.clear();
             self.global_pool.destroy(&self.device);
             self.viewer_object.model.borrow_mut().destroy(&self.device);
+            self.point_light_system.destroy(&self.device);
             self.simple_render_system.destroy(&self.device);
             self.renderer.destroy(&self.device);
             self.device.destroy();
