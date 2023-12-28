@@ -28,12 +28,4 @@ void main() {
     fragNormalWorld = normalize(mat3(push.normal_matrix) * normal);
     fragPosWorld = positionWorld.xyz;
     fragColor = color;
-
-    vec3 directionToLight = ubo.light_position.xyz - positionWorld.xyz;
-    float attenuation = 1.0 / dot(directionToLight, directionToLight);
-    vec3 lightColor = ubo.light_color.xyz * ubo.light_color.w * attenuation;
-    vec3 ambientLight = ubo.ambient_light_color.xyz * ubo.ambient_light_color.w;
-    vec3 diffuseLight = lightColor * max(dot(fragNormalWorld, normalize(directionToLight)), 0);
-
-    fragColor = (diffuseLight + ambientLight) * color;
 }
