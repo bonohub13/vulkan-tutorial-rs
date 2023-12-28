@@ -11,6 +11,8 @@ use std::{ffi::CStr, fs::File};
  */
 
 pub struct PipelineConfigInfo {
+    pub binding_descriptions: Vec<vk::VertexInputBindingDescription>,
+    pub attribute_descriptions: Vec<vk::VertexInputAttributeDescription>,
     pub viewport_info: vk::PipelineViewportStateCreateInfo,
     pub input_assembly_info: vk::PipelineInputAssemblyStateCreateInfo,
     pub rasterization_info: vk::PipelineRasterizationStateCreateInfo,
@@ -57,6 +59,8 @@ impl Pipeline {
 
     pub fn default_pipeline_config_info() -> PipelineConfigInfo {
         PipelineConfigInfo {
+            binding_descriptions: crate::Vertex::binding_descriptions(),
+            attribute_descriptions: crate::Vertex::attribute_descriptions(),
             viewport_info: vk::PipelineViewportStateCreateInfo::builder()
                 .viewports(&[])
                 .scissors(&[])
@@ -157,8 +161,8 @@ impl Pipeline {
                     .name(unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") })
                     .build(),
             ];
-            let binding_descriptions = crate::Vertex::binding_descriptions();
-            let attribute_descriptions = crate::Vertex::attribute_descriptions();
+            let binding_descriptions = &config_info.binding_descriptions;
+            let attribute_descriptions = &config_info.attribute_descriptions;
             let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
                 .vertex_attribute_descriptions(&attribute_descriptions)
                 .vertex_binding_descriptions(&binding_descriptions);
