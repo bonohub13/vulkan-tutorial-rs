@@ -38,7 +38,7 @@ pub unsafe fn multiple_triangles(device: &crate::Device) -> Result<Vec<crate::Ga
 
             Rc::new(RefCell::new(model))
         };
-        let mut triangle = crate::GameObject::create_game_object(model);
+        let mut triangle = crate::GameObject::create_game_object(Some(model));
         let offset = i as f32;
 
         triangle.transform.scale = (0.5 + offset * 0.025) * glm::vec3(1., 1., 1.);

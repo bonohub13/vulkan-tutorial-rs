@@ -24,7 +24,7 @@ pub use descriptors::{
     DescriptorWriter,
 };
 pub use device::{Device, QueryFamilyIndices};
-pub use frame_info::FrameInfo;
+pub use frame_info::{FrameInfo, GlobalUbo};
 pub use game_objects::{GameObject, Map, ObjectId, TransformComponent};
 pub use model::{Model, Vertex};
 pub use pipeline::Pipeline;

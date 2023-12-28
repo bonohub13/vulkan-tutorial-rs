@@ -16,6 +16,7 @@ all: build run
 
 # Rust code
 clean:
+	@rm -rvf shaders/*.spv
 	(cd lve_rs && $(CC) clean)
 	$(CC) clean
 

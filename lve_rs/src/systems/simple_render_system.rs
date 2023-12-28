@@ -52,46 +52,42 @@ impl SimpleRenderSystem {
             &[],
         );
         for key in frame_info.game_objects.keys() {
-            let push = SimplePushConstantData {
-                model_matrix: frame_info.game_objects[key].transform.mat4(),
-                normal_matrix: frame_info.game_objects[key].transform.normal_matrix(),
-            };
-            let offsets = {
-                let transform = bytemuck::offset_of!(SimplePushConstantData, model_matrix) as u32;
-                let color = bytemuck::offset_of!(SimplePushConstantData, normal_matrix) as u32;
-                let aligned_offset = |offset: u32| {
-                    if offset % 16 == 0 {
-                        offset
-                    } else {
-                        (offset / 16 + 1) * 16
-                    }
+            if let Some(model) = &frame_info.game_objects[key].model {
+                let push = SimplePushConstantData {
+                    model_matrix: frame_info.game_objects[key].transform.mat4(),
+                    normal_matrix: frame_info.game_objects[key].transform.normal_matrix(),
+                };
+                let offsets = {
+                    let normal_matrix =
+                        bytemuck::offset_of!(SimplePushConstantData, normal_matrix) as u32;
+                    let aligned_offset = |offset: u32| {
+                        if offset % 16 == 0 {
+                            offset
+                        } else {
+                            (offset / 16 + 1) * 16
+                        }
+                    };
+
+                    [0, aligned_offset(normal_matrix)]
                 };
 
-                [aligned_offset(transform), aligned_offset(color)]
-            };
-
-            device_ref.cmd_push_constants(
-                frame_info.command_buffer,
-                self.pipeline_layout,
-                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                0,
-                bytemuck::cast_slice(push.model_matrix.as_slice()),
-            );
-            device_ref.cmd_push_constants(
-                frame_info.command_buffer,
-                self.pipeline_layout,
-                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                offsets[1],
-                bytemuck::cast_slice(push.normal_matrix.as_slice()),
-            );
-            frame_info.game_objects[key]
-                .model
-                .borrow()
-                .bind(device, &frame_info.command_buffer);
-            frame_info.game_objects[key]
-                .model
-                .borrow()
-                .draw(device, &frame_info.command_buffer);
+                device_ref.cmd_push_constants(
+                    frame_info.command_buffer,
+                    self.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    offsets[0],
+                    bytemuck::cast_slice(push.model_matrix.as_slice()),
+                );
+                device_ref.cmd_push_constants(
+                    frame_info.command_buffer,
+                    self.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    offsets[1],
+                    bytemuck::cast_slice(push.normal_matrix.as_slice()),
+                );
+                model.borrow().bind(device, &frame_info.command_buffer);
+                model.borrow().draw(device, &frame_info.command_buffer);
+            }
         }
     }
 

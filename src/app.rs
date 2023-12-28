@@ -9,15 +9,6 @@ use winit::{
 
 extern crate nalgebra_glm as glm;
 
-#[derive(Debug, Clone, Copy)]
-pub struct GlobalUbo {
-    pub projection: glm::Mat4,
-    pub view: glm::Mat4,
-    pub ambient_light_color: glm::Vec4,
-    pub light_position: glm::Vec4, // Does not work with glm::Vec3
-    pub light_color: glm::Vec4,
-}
-
 pub struct App {
     window: lve_rs::Window,
     device: lve_rs::Device,
@@ -70,17 +61,7 @@ impl App {
         let mut camera = lve_rs::Camera::new();
         let camera_controller =
             lve_rs::controller::keyboard::KeyboardMovementController::new(9.0 * 2.0, 4.25 * 2.0);
-        let mut viewer_object = {
-            let viewer = lve_rs::Model::builder()
-                .vertices(&[
-                    lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
-                    lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
-                    lve_rs::Vertex::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0]),
-                ])
-                .build(&device)?;
-
-            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(viewer))) }
-        };
+        let mut viewer_object = { unsafe { lve_rs::GameObject::create_game_object(None) } };
         let global_set_layout = lve_rs::DescriptorSetLayout::builder()
             .add_binding(
                 0,
@@ -105,7 +86,7 @@ impl App {
         for i in 0..lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize {
             ubo_buffers.push(Box::new(lve_rs::Buffer::new(
                 &device,
-                size_of::<GlobalUbo>() as u64,
+                size_of::<lve_rs::GlobalUbo>() as u64,
                 1,
                 vk::BufferUsageFlags::UNIFORM_BUFFER,
                 vk::MemoryPropertyFlags::HOST_VISIBLE,
@@ -186,15 +167,15 @@ impl App {
                 command_buffer,
                 camera: &self.camera,
                 global_descriptor_set: self.global_descriptor_sets[frame_index],
-                game_objects: &self.game_objects,
+                game_objects: &mut self.game_objects,
             };
             // update
-            let ubo = GlobalUbo {
+            let mut ubo = lve_rs::GlobalUbo {
                 projection: *self.camera.projection(),
                 view: *self.camera.view(),
                 ..Default::default()
             };
-
+            self.point_light_system.update(&mut frame_info, &mut ubo);
             unsafe {
                 self.ubo_buffers[frame_index].write_to_buffer(
                     &self.device,
@@ -247,18 +228,40 @@ impl App {
         let mut smooth_vase = {
             let model = lve_rs::Model::create_model_from_file(device, "models/smooth_vase.obj")?;
 
-            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) }
+            unsafe { lve_rs::GameObject::create_game_object(Some(Rc::new(RefCell::new(*model)))) }
         };
         let mut flat_vase = {
             let model = lve_rs::Model::create_model_from_file(device, "models/flat_vase.obj")?;
 
-            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) }
+            unsafe { lve_rs::GameObject::create_game_object(Some(Rc::new(RefCell::new(*model)))) }
         };
         let mut floor = {
             let model = lve_rs::Model::create_model_from_file(device, "models/quad.obj")?;
 
-            unsafe { lve_rs::GameObject::create_game_object(Rc::new(RefCell::new(*model))) }
+            unsafe { lve_rs::GameObject::create_game_object(Some(Rc::new(RefCell::new(*model)))) }
         };
+        let light_colors = [
+            glm::vec3(1.0, 0.1, 0.1),
+            glm::vec3(0.1, 0.1, 1.0),
+            glm::vec3(0.1, 1.0, 0.1),
+            glm::vec3(1.0, 1.0, 0.1),
+            glm::vec3(0.1, 1.0, 1.0),
+            glm::vec3(1.0, 1.0, 1.0),
+        ];
+        for (i, light_color) in light_colors.iter().enumerate() {
+            let mut point_light = unsafe {
+                lve_rs::GameObject::make_point_light(Some(0.2), None, Some(*light_color))
+            };
+            let rotate_light = glm::rotate(
+                &glm::Mat4::identity(),
+                (i as f32 * 2.0 * std::f32::consts::PI) / light_colors.len() as f32,
+                &glm::vec3(0.0, -1.0, 0.0),
+            );
+
+            point_light.transform.translation =
+                (rotate_light * glm::vec4(-1.0, -1.0, -1.0, 1.0)).xyz();
+            game_objects.insert(point_light.id(), point_light);
+        }
 
         smooth_vase.transform.translation = glm::vec3(0.5, 0.5, 0.0);
         smooth_vase.transform.scale = 3.0f32 * glm::vec3(1.0, 0.5, 1.0);
@@ -275,18 +278,6 @@ impl App {
     }
 }
 
-impl Default for GlobalUbo {
-    fn default() -> Self {
-        Self {
-            projection: glm::Mat4::identity(),
-            view: glm::Mat4::identity(),
-            ambient_light_color: glm::vec4(1.0, 1.0, 1.0, 0.2),
-            light_position: glm::vec4(-1.0, -1.0, -1.0, -1.0),
-            light_color: glm::vec4(1.0, 1.0, 1.0, 1.0),
-        }
-    }
-}
-
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
@@ -296,14 +287,12 @@ impl Drop for App {
                 .for_each(|ubo_buffer| ubo_buffer.destroy(&self.device));
             self.ubo_buffers.clear();
             for key in self.game_objects.keys() {
-                self.game_objects[key]
-                    .model
-                    .borrow_mut()
-                    .destroy(&self.device);
+                if let Some(model) = &self.game_objects[key].model {
+                    model.borrow_mut().destroy(&self.device);
+                }
             }
             self.game_objects.clear();
             self.global_pool.destroy(&self.device);
-            self.viewer_object.model.borrow_mut().destroy(&self.device);
             self.point_light_system.destroy(&self.device);
             self.simple_render_system.destroy(&self.device);
             self.renderer.destroy(&self.device);
