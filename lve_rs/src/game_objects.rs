@@ -1,6 +1,7 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub type ObjectId = u32;
+pub type Map = HashMap<ObjectId, GameObject>;
 
 pub struct TransformComponent {
     pub translation: glm::Vec3,
