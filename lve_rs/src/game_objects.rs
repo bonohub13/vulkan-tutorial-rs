@@ -9,10 +9,16 @@ pub struct TransformComponent {
     pub rotation: glm::Vec3,
 }
 
+#[derive(Clone, Copy)]
+pub struct PointLightComponent {
+    pub light_intensity: f32,
+}
+
 pub struct GameObject {
     pub color: glm::Vec3,
-    pub model: Rc<RefCell<crate::Model>>,
+    pub model: Option<Rc<RefCell<crate::Model>>>,
     pub transform: TransformComponent,
+    pub point_light: Option<PointLightComponent>,
     id: ObjectId,
 }
 
@@ -92,7 +98,7 @@ impl TransformComponent {
 }
 
 impl GameObject {
-    pub fn new(object_id: ObjectId, model: Rc<RefCell<crate::Model>>) -> Self {
+    pub fn new(object_id: ObjectId, model: Option<Rc<RefCell<crate::Model>>>) -> Self {
         Self {
             id: object_id,
             model,
@@ -100,15 +106,35 @@ impl GameObject {
             transform: TransformComponent {
                 ..Default::default()
             },
+            point_light: None,
         }
     }
 
-    pub unsafe fn create_game_object(model: Rc<RefCell<crate::Model>>) -> Self {
+    pub unsafe fn create_game_object(model: Option<Rc<RefCell<crate::Model>>>) -> Self {
         static mut CURRENT_ID: ObjectId = 0;
 
         CURRENT_ID += 1;
 
         Self::new(CURRENT_ID, model)
+    }
+
+    pub unsafe fn make_point_light(
+        intensity: Option<f32>,
+        radius: Option<f32>,
+        color: Option<glm::Vec3>,
+    ) -> Self {
+        let intensity = intensity.unwrap_or(10.0);
+        let radius = radius.unwrap_or(0.1);
+        let color = color.unwrap_or(glm::vec3(1.0, 1.0, 1.0));
+        let mut game_object = Self::create_game_object(None);
+
+        game_object.color = color;
+        game_object.transform.scale.x = radius;
+        game_object.point_light = Some(PointLightComponent {
+            light_intensity: intensity,
+        });
+
+        game_object
     }
 
     pub const fn id(&self) -> ObjectId {
@@ -122,6 +148,14 @@ impl Default for TransformComponent {
             translation: glm::Vec3::default(),
             scale: glm::vec3(1., 1., 1.),
             rotation: glm::Vec3::default(),
+        }
+    }
+}
+
+impl Default for PointLightComponent {
+    fn default() -> Self {
+        Self {
+            light_intensity: 1.0,
         }
     }
 }
