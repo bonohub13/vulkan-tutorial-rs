@@ -38,8 +38,7 @@ impl SimpleRenderSystem {
     pub unsafe fn render_game_objects(
         &self,
         device: &crate::Device,
-        frame_info: &crate::FrameInfo,
-        game_objects: &mut Vec<crate::GameObject>,
+        frame_info: &mut crate::FrameInfo,
     ) {
         let device_ref = device.device();
 
@@ -52,10 +51,10 @@ impl SimpleRenderSystem {
             std::slice::from_ref(&frame_info.global_descriptor_set),
             &[],
         );
-        for game_object in game_objects.iter_mut() {
+        for key in frame_info.game_objects.keys() {
             let push = SimplePushConstantData {
-                model_matrix: game_object.transform.mat4(),
-                normal_matrix: game_object.transform.normal_matrix(),
+                model_matrix: frame_info.game_objects[key].transform.mat4(),
+                normal_matrix: frame_info.game_objects[key].transform.normal_matrix(),
             };
             let offsets = {
                 let transform = bytemuck::offset_of!(SimplePushConstantData, model_matrix) as u32;
@@ -85,11 +84,11 @@ impl SimpleRenderSystem {
                 offsets[1],
                 bytemuck::cast_slice(push.normal_matrix.as_slice()),
             );
-            game_object
+            frame_info.game_objects[key]
                 .model
                 .borrow()
                 .bind(device, &frame_info.command_buffer);
-            game_object
+            frame_info.game_objects[key]
                 .model
                 .borrow()
                 .draw(device, &frame_info.command_buffer);

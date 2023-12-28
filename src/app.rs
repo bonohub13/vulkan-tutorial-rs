@@ -26,7 +26,7 @@ pub struct App {
     camera_controller: lve_rs::controller::keyboard::KeyboardMovementController,
     viewer_object: lve_rs::GameObject,
     global_pool: Box<lve_rs::DescriptorPool>,
-    game_objects: Vec<lve_rs::GameObject>,
+    game_objects: lve_rs::Map,
     global_descriptor_sets: Vec<vk::DescriptorSet>,
     global_set_layout: Box<lve_rs::DescriptorSetLayout>,
     ubo_buffers: Vec<Box<lve_rs::Buffer>>,
@@ -61,7 +61,7 @@ impl App {
                 lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32,
             )
             .build(&device)?;
-        let mut game_objects = vec![];
+        let mut game_objects = lve_rs::Map::new();
 
         Self::load_game_object(&mut game_objects, &device)?;
 
@@ -83,7 +83,7 @@ impl App {
             .add_binding(
                 0,
                 vk::DescriptorType::UNIFORM_BUFFER,
-                vk::ShaderStageFlags::VERTEX,
+                vk::ShaderStageFlags::ALL_GRAPHICS,
                 None,
             )
             .build(&device)?;
@@ -172,12 +172,13 @@ impl App {
 
         if command_buffer != vk::CommandBuffer::null() {
             let frame_index = self.renderer.frame_index();
-            let frame_info = lve_rs::FrameInfo {
+            let mut frame_info = lve_rs::FrameInfo {
                 frame_index,
                 frame_time: delta_time,
                 command_buffer,
                 camera: &self.camera,
                 global_descriptor_set: self.global_descriptor_sets[frame_index],
+                game_objects: &self.game_objects,
             };
             // update
             let ubo = GlobalUbo {
@@ -198,11 +199,8 @@ impl App {
             unsafe {
                 self.renderer
                     .begin_swap_chain_render_pass(&self.device, &command_buffer);
-                self.simple_render_system.render_game_objects(
-                    &self.device,
-                    &frame_info,
-                    &mut self.game_objects,
-                );
+                self.simple_render_system
+                    .render_game_objects(&self.device, &mut frame_info);
                 self.renderer
                     .end_swap_chain_render_pass(&self.device, &command_buffer);
                 self.renderer.end_frame(
@@ -235,10 +233,7 @@ impl App {
         Ok(self.device.device().device_wait_idle()?)
     }
 
-    fn load_game_object(
-        game_objects: &mut Vec<lve_rs::GameObject>,
-        device: &lve_rs::Device,
-    ) -> Result<()> {
+    fn load_game_object(game_objects: &mut lve_rs::Map, device: &lve_rs::Device) -> Result<()> {
         let mut smooth_vase = {
             let model = lve_rs::Model::create_model_from_file(device, "models/smooth_vase.obj")?;
 
@@ -262,7 +257,9 @@ impl App {
         floor.transform.translation = glm::vec3(0., 0.5, 0.);
         floor.transform.scale = glm::vec3(3.0, 1.0, 3.0);
 
-        *game_objects = vec![smooth_vase, flat_vase, floor];
+        game_objects.insert(smooth_vase.id(), smooth_vase);
+        game_objects.insert(flat_vase.id(), flat_vase);
+        game_objects.insert(floor.id(), floor);
 
         Ok(())
     }
@@ -287,8 +284,11 @@ impl Drop for App {
                 .iter_mut()
                 .for_each(|ubo_buffer| ubo_buffer.destroy(&self.device));
             self.ubo_buffers.clear();
-            for game_object in self.game_objects.iter() {
-                game_object.model.borrow_mut().destroy(&self.device);
+            for key in self.game_objects.keys() {
+                self.game_objects[key]
+                    .model
+                    .borrow_mut()
+                    .destroy(&self.device);
             }
             self.game_objects.clear();
             self.global_pool.destroy(&self.device);

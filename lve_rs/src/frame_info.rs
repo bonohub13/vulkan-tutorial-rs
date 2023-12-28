@@ -6,4 +6,5 @@ pub struct FrameInfo<'a> {
     pub command_buffer: vk::CommandBuffer,
     pub camera: &'a crate::Camera,
     pub global_descriptor_set: vk::DescriptorSet,
+    pub game_objects: &'a crate::Map,
 }
