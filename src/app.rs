@@ -173,6 +173,7 @@ impl App {
             let mut ubo = lve_rs::GlobalUbo {
                 projection: *self.camera.projection(),
                 view: *self.camera.view(),
+                inverse_view: *self.camera.inverse_view(),
                 ..Default::default()
             };
             self.point_light_system.update(&mut frame_info, &mut ubo);

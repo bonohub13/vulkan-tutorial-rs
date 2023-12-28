@@ -14,6 +14,7 @@ pub struct PointLight {
 pub struct GlobalUbo {
     pub projection: glm::Mat4,
     pub view: glm::Mat4,
+    pub inverse_view: glm::Mat4,
     pub ambient_light_color: glm::Vec4,
     pub point_lights: [PointLight; MAX_LIGHT],
     pub num_lights: i32,
@@ -42,6 +43,7 @@ impl Default for GlobalUbo {
         Self {
             projection: glm::Mat4::identity(),
             view: glm::Mat4::identity(),
+            inverse_view: glm::Mat4::identity(),
             ambient_light_color: glm::vec4(1.0, 1.0, 1.0, 0.02),
             point_lights: [
                 PointLight::default(),

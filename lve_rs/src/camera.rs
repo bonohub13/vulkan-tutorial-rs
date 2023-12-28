@@ -1,6 +1,7 @@
 pub struct Camera {
     projection_matrix: glm::Mat4,
     view_matrix: glm::Mat4,
+    inverse_view_matrix: glm::Mat4,
 }
 
 impl Camera {
@@ -8,6 +9,7 @@ impl Camera {
         Self {
             projection_matrix: glm::Mat4::identity(),
             view_matrix: glm::Mat4::identity(),
+            inverse_view_matrix: glm::Mat4::identity(),
         }
     }
 
@@ -73,6 +75,20 @@ impl Camera {
         self.view_matrix.m14 = -glm::dot(&u, &position);
         self.view_matrix.m24 = -glm::dot(&v, &position);
         self.view_matrix.m34 = -glm::dot(&w, &position);
+
+        self.inverse_view_matrix = glm::Mat4::identity();
+        self.inverse_view_matrix.m11 = u.x;
+        self.inverse_view_matrix.m21 = u.y;
+        self.inverse_view_matrix.m31 = u.z;
+        self.inverse_view_matrix.m12 = v.x;
+        self.inverse_view_matrix.m22 = v.y;
+        self.inverse_view_matrix.m32 = v.z;
+        self.inverse_view_matrix.m13 = w.x;
+        self.inverse_view_matrix.m23 = w.y;
+        self.inverse_view_matrix.m33 = w.z;
+        self.inverse_view_matrix.m14 = position.x;
+        self.inverse_view_matrix.m24 = position.y;
+        self.inverse_view_matrix.m34 = position.z;
     }
 
     pub fn set_view_target(
@@ -122,6 +138,20 @@ impl Camera {
         self.view_matrix.m14 = -glm::dot(&u, &position);
         self.view_matrix.m24 = -glm::dot(&v, &position);
         self.view_matrix.m34 = -glm::dot(&w, &position);
+
+        self.inverse_view_matrix = glm::Mat4::identity();
+        self.inverse_view_matrix.m11 = u.x;
+        self.inverse_view_matrix.m21 = u.y;
+        self.inverse_view_matrix.m31 = u.z;
+        self.inverse_view_matrix.m12 = v.x;
+        self.inverse_view_matrix.m22 = v.y;
+        self.inverse_view_matrix.m32 = v.z;
+        self.inverse_view_matrix.m13 = w.x;
+        self.inverse_view_matrix.m23 = w.y;
+        self.inverse_view_matrix.m33 = w.z;
+        self.inverse_view_matrix.m14 = position.x;
+        self.inverse_view_matrix.m24 = position.y;
+        self.inverse_view_matrix.m34 = position.z;
     }
 
     pub const fn projection(&self) -> &glm::Mat4 {
@@ -130,5 +160,9 @@ impl Camera {
 
     pub const fn view(&self) -> &glm::Mat4 {
         &self.view_matrix
+    }
+
+    pub const fn inverse_view(&self) -> &glm::Mat4 {
+        &self.inverse_view_matrix
     }
 }
