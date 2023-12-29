@@ -165,4 +165,8 @@ impl Camera {
     pub const fn inverse_view(&self) -> &glm::Mat4 {
         &self.inverse_view_matrix
     }
+
+    pub fn position(&self) -> glm::Vec3 {
+        self.inverse_view_matrix.column(3).xyz()
+    }
 }

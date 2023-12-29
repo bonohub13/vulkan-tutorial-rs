@@ -118,6 +118,67 @@ impl Pipeline {
         }
     }
 
+    pub fn enable_alpha_blending() -> PipelineConfigInfo {
+        PipelineConfigInfo {
+            binding_descriptions: crate::Vertex::binding_descriptions(),
+            attribute_descriptions: crate::Vertex::attribute_descriptions(),
+            viewport_info: vk::PipelineViewportStateCreateInfo::builder()
+                .viewports(&[])
+                .scissors(&[])
+                .build(),
+            input_assembly_info: vk::PipelineInputAssemblyStateCreateInfo::builder()
+                .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+                .primitive_restart_enable(false)
+                .build(),
+            rasterization_info: vk::PipelineRasterizationStateCreateInfo::builder()
+                .depth_clamp_enable(false)
+                .rasterizer_discard_enable(false)
+                .polygon_mode(vk::PolygonMode::FILL)
+                .line_width(1.0f32)
+                .cull_mode(vk::CullModeFlags::NONE)
+                .front_face(vk::FrontFace::CLOCKWISE)
+                .depth_bias_enable(false)
+                .depth_bias_constant_factor(0.0)
+                .depth_bias_clamp(0.0)
+                .depth_bias_slope_factor(0.0)
+                .build(),
+            multisample_info: vk::PipelineMultisampleStateCreateInfo::builder()
+                .sample_shading_enable(false)
+                .rasterization_samples(vk::SampleCountFlags::TYPE_1)
+                .min_sample_shading(1.0)
+                .sample_mask(&[])
+                .alpha_to_coverage_enable(false)
+                .alpha_to_one_enable(false)
+                .build(),
+            color_blend_attachment: vk::PipelineColorBlendAttachmentState::builder()
+                .color_write_mask(vk::ColorComponentFlags::RGBA)
+                .blend_enable(true)
+                .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+                .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+                .color_blend_op(vk::BlendOp::ADD)
+                .src_alpha_blend_factor(vk::BlendFactor::ONE)
+                .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+                .alpha_blend_op(vk::BlendOp::ADD)
+                .build(),
+            depth_stencil_info: vk::PipelineDepthStencilStateCreateInfo::builder()
+                .depth_test_enable(true)
+                .depth_write_enable(true)
+                .depth_compare_op(vk::CompareOp::LESS)
+                .depth_bounds_test_enable(false)
+                .min_depth_bounds(0.0)
+                .max_depth_bounds(1.0)
+                .stencil_test_enable(false)
+                .build(),
+            dynamic_state_enables: vec![
+                vk::DynamicState::VIEWPORT_WITH_COUNT,
+                vk::DynamicState::SCISSOR_WITH_COUNT,
+            ],
+            pipeline_layout: vk::PipelineLayout::null(),
+            render_pass: vk::RenderPass::null(),
+            subpass: 0,
+        }
+    }
+
     fn read_file(file_path: &str) -> Result<File> {
         Ok(File::open(file_path)?)
     }

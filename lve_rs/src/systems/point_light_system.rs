@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ash::vk;
-use std::mem::size_of;
+use std::{collections::HashMap, mem::size_of};
 
 #[repr(C, align(16))]
 pub struct PointLightPushConstants {
@@ -79,6 +79,21 @@ impl PointLightSystem {
     }
 
     pub unsafe fn render(&self, device: &crate::Device, frame_info: &crate::FrameInfo) {
+        let mut sorted = HashMap::new();
+
+        for kv in frame_info.game_objects.iter() {
+            let obj = kv.1;
+
+            if obj.point_light.is_some() {
+                let offset = frame_info.camera.position() - obj.transform.translation;
+                let distance_squared = offset.dot(&offset);
+
+                sorted.insert(ordered_float::OrderedFloat(distance_squared), obj.id());
+            }
+        }
+
+        let mut sorted = sorted.into_iter().collect::<Vec<_>>();
+        sorted.sort_by(|x, y| x.0.cmp(&y.0));
         let device_ref = device.device();
 
         self.pipeline.bind(device, &frame_info.command_buffer);
@@ -91,8 +106,8 @@ impl PointLightSystem {
             &[],
         );
 
-        for kv in frame_info.game_objects.iter() {
-            let obj = &kv.1;
+        for kv in sorted.iter().rev() {
+            let obj = &frame_info.game_objects[&kv.1];
 
             if let Some(point_light) = &obj.point_light {
                 let push = PointLightPushConstants {
@@ -179,7 +194,7 @@ impl PointLightSystem {
             "Cannot create pipeline before pipeline layout"
         );
 
-        let mut config_info = crate::Pipeline::default_pipeline_config_info();
+        let mut config_info = crate::Pipeline::enable_alpha_blending();
 
         config_info.binding_descriptions.clear();
         config_info.attribute_descriptions.clear();
