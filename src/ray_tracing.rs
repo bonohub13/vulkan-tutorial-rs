@@ -9,12 +9,11 @@ use winit::{
 
 extern crate nalgebra_glm as glm;
 
-pub struct App {
+pub struct RayTracing {
     window: lve_rs::Window,
     device: lve_rs::Device,
     renderer: lve_rs::Renderer,
-    simple_render_system: lve_rs::SimpleRenderSystem,
-    point_light_system: lve_rs::PointLightSystem,
+    world_render_system: lve_rs::WorldRenderSystem,
     camera: lve_rs::Camera,
     camera_controller: lve_rs::controller::keyboard::KeyboardMovementController,
     viewer_object: lve_rs::GameObject,
@@ -25,7 +24,7 @@ pub struct App {
     ubo_buffers: Vec<Box<lve_rs::Buffer>>,
 }
 
-impl App {
+impl RayTracing {
     pub const WIDTH: i32 = 1280;
     pub const HEIGHT: i32 = 800;
 
@@ -44,7 +43,12 @@ impl App {
         } else {
             Self::HEIGHT
         };
-        let window = lve_rs::Window::new(event_loop, width, height, "Hello Vulkan!")?;
+        let window = lve_rs::Window::new(
+            event_loop,
+            width,
+            height,
+            "Ray Tracing in One Weekend (CPU)",
+        )?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
         let renderer = lve_rs::Renderer::new(&window, &device)?;
         let global_pool = lve_rs::DescriptorPool::builder()
@@ -60,7 +64,7 @@ impl App {
 
         let mut camera = lve_rs::Camera::new();
         let camera_controller =
-            lve_rs::controller::keyboard::KeyboardMovementController::new(9.0 * 2.0, 4.25 * 2.0);
+            lve_rs::controller::keyboard::KeyboardMovementController::new(9.0 * 4.0, 4.25 * 4.0);
         let mut viewer_object = { unsafe { lve_rs::GameObject::create_game_object(None) } };
         let global_set_layout = lve_rs::DescriptorSetLayout::builder()
             .add_binding(
@@ -70,15 +74,12 @@ impl App {
                 None,
             )
             .build(&device)?;
-        let simple_render_system = lve_rs::SimpleRenderSystem::new(
+        let world = Self::load_world(&device)?;
+        let world_render_system = lve_rs::WorldRenderSystem::new(
             &device,
             renderer.swap_chain_render_pass(),
             &global_set_layout.descriptor_set_layout(),
-        )?;
-        let point_light_system = lve_rs::PointLightSystem::new(
-            &device,
-            renderer.swap_chain_render_pass(),
-            &global_set_layout.descriptor_set_layout(),
+            world,
         )?;
         let mut ubo_buffers = Vec::with_capacity(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize);
         let mut global_descriptor_sets = vec![];
@@ -111,8 +112,7 @@ impl App {
             window,
             device,
             renderer,
-            simple_render_system,
-            point_light_system,
+            world_render_system,
             camera,
             camera_controller,
             viewer_object,
@@ -170,13 +170,13 @@ impl App {
                 game_objects: &mut self.game_objects,
             };
             // update
-            let mut ubo = lve_rs::GlobalUbo {
+            let ubo = lve_rs::GlobalUbo {
                 projection: *self.camera.projection(),
                 view: *self.camera.view(),
                 inverse_view: *self.camera.inverse_view(),
                 ..Default::default()
             };
-            self.point_light_system.update(&mut frame_info, &mut ubo);
+            self.world_render_system.update(&frame_info);
             unsafe {
                 self.ubo_buffers[frame_index].write_to_buffer(
                     &self.device,
@@ -190,9 +190,8 @@ impl App {
             unsafe {
                 self.renderer
                     .begin_swap_chain_render_pass(&self.device, &command_buffer);
-                self.simple_render_system
-                    .render_game_objects(&self.device, &mut frame_info);
-                self.point_light_system.render(&self.device, &frame_info);
+                self.world_render_system
+                    .render(&self.device, &mut frame_info);
                 self.renderer
                     .end_swap_chain_render_pass(&self.device, &command_buffer);
                 self.renderer.end_frame(
@@ -226,60 +225,24 @@ impl App {
     }
 
     fn load_game_object(game_objects: &mut lve_rs::Map, device: &lve_rs::Device) -> Result<()> {
-        let mut smooth_vase = {
-            let model = lve_rs::Model::create_model_from_file(device, "models/smooth_vase.obj")?;
-
-            unsafe { lve_rs::GameObject::create_game_object(Some(Rc::new(RefCell::new(*model)))) }
-        };
-        let mut flat_vase = {
-            let model = lve_rs::Model::create_model_from_file(device, "models/flat_vase.obj")?;
-
-            unsafe { lve_rs::GameObject::create_game_object(Some(Rc::new(RefCell::new(*model)))) }
-        };
-        let mut floor = {
-            let model = lve_rs::Model::create_model_from_file(device, "models/quad.obj")?;
-
-            unsafe { lve_rs::GameObject::create_game_object(Some(Rc::new(RefCell::new(*model)))) }
-        };
-        let light_colors = [
-            glm::vec3(1.0, 0.1, 0.1),
-            glm::vec3(0.1, 0.1, 1.0),
-            glm::vec3(0.1, 1.0, 0.1),
-            glm::vec3(1.0, 1.0, 0.1),
-            glm::vec3(0.1, 1.0, 1.0),
-            glm::vec3(1.0, 1.0, 1.0),
-        ];
-        for (i, light_color) in light_colors.iter().enumerate() {
-            let mut point_light = unsafe {
-                lve_rs::GameObject::make_point_light(Some(0.2), None, Some(*light_color))
-            };
-            let rotate_light = glm::rotate(
-                &glm::Mat4::identity(),
-                (i as f32 * 2.0 * std::f32::consts::PI) / light_colors.len() as f32,
-                &glm::vec3(0.0, -1.0, 0.0),
-            );
-
-            point_light.transform.translation =
-                (rotate_light * glm::vec4(-1.0, -1.0, -1.0, 1.0)).xyz();
-            game_objects.insert(point_light.id(), point_light);
-        }
-
-        smooth_vase.transform.translation = glm::vec3(0.5, 0.5, 0.0);
-        smooth_vase.transform.scale = 3.0f32 * glm::vec3(1.0, 0.5, 1.0);
-        flat_vase.transform.translation = glm::vec3(-0.5, 0.5, 0.0);
-        flat_vase.transform.scale = 3.0f32 * glm::vec3(1.0, 0.5, 1.0);
-        floor.transform.translation = glm::vec3(0., 0.5, 0.);
-        floor.transform.scale = glm::vec3(3.0, 1.0, 3.0);
-
-        game_objects.insert(smooth_vase.id(), smooth_vase);
-        game_objects.insert(flat_vase.id(), flat_vase);
-        game_objects.insert(floor.id(), floor);
-
         Ok(())
+    }
+
+    fn load_world(device: &lve_rs::Device) -> Result<Box<lve_rs::GameObject>> {
+        let mut world = {
+            let world = lve_rs::Model::create_model_from_file(device, "models/sphere.obj")?;
+
+            unsafe { lve_rs::GameObject::create_game_object(Some(Rc::new(RefCell::new(*world)))) }
+        };
+
+        world.transform.scale = 75.0f32 * glm::vec3(1.0, 1.0, 1.0);
+        world.transform.translation.y = 0.0;
+
+        Ok(Box::new(world))
     }
 }
 
-impl Drop for App {
+impl Drop for RayTracing {
     fn drop(&mut self) {
         unsafe {
             self.global_set_layout.destroy(&self.device);
@@ -294,8 +257,7 @@ impl Drop for App {
             }
             self.game_objects.clear();
             self.global_pool.destroy(&self.device);
-            self.point_light_system.destroy(&self.device);
-            self.simple_render_system.destroy(&self.device);
+            self.world_render_system.destroy(&self.device);
             self.renderer.destroy(&self.device);
             self.device.destroy();
         }

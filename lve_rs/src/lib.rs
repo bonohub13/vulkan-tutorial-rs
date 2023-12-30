@@ -31,7 +31,7 @@ pub use pipeline::Pipeline;
 pub use renderer::Renderer;
 pub use surface::{Surface, SwapChainSupportDetails};
 pub use swap_chain::SwapChain;
-pub use systems::{PointLightSystem, SimplePushConstantData, SimpleRenderSystem};
+pub use systems::{PointLightSystem, SimpleRenderSystem, WorldRenderSystem};
 pub use window::Window;
 
 extern crate nalgebra_glm as glm;

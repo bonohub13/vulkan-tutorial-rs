@@ -2,7 +2,7 @@ mod app;
 mod ray_tracing;
 
 use anyhow::{bail, Result};
-use app::App;
+use ray_tracing::RayTracing;
 use std::{borrow::BorrowMut, time};
 use winit::{
     event::{
@@ -13,10 +13,11 @@ use winit::{
 };
 
 const FRAMES_TO_RENDER: u32 = 10;
+const LIMIT_FRAMES_TO_RENDER: bool = false;
 
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
-    let mut app = App::new(&event_loop, None, None)?;
+    let mut app = RayTracing::new(&event_loop, None, None)?;
     let mut current_time = time::Instant::now();
     let mut keys_pressed: [Option<VirtualKeyCode>; 10] =
         [None, None, None, None, None, None, None, None, None, None];
@@ -57,7 +58,9 @@ fn main() -> Result<()> {
                     }) => match state {
                         ElementState::Pressed => {
                             if !keys_pressed.contains(&virtual_keycode) {
-                                if virtual_keycode == Some(VirtualKeyCode::Return) {
+                                if virtual_keycode == Some(VirtualKeyCode::Return)
+                                    && LIMIT_FRAMES_TO_RENDER
+                                {
                                     rendered_frames = 0;
                                 } else if let Some(key_unassigned) =
                                     keys_pressed.iter_mut().filter(|key| key.is_none()).next()
@@ -82,13 +85,15 @@ fn main() -> Result<()> {
                 Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {}
                 Event::MainEventsCleared => {
                     // Only render if the ENTER key is pressed
-                    if rendered_frames < FRAMES_TO_RENDER {
+                    if rendered_frames < FRAMES_TO_RENDER || !LIMIT_FRAMES_TO_RENDER {
                         app.draw_frame(Some(control_flow), frame_time, &keys_pressed)
                             .unwrap_or_else(|e| {
                                 eprintln!("{:?}", e);
                                 *control_flow = ControlFlow::ExitWithCode(0x10);
                             });
-                        rendered_frames += 1;
+                        if LIMIT_FRAMES_TO_RENDER {
+                            rendered_frames += 1;
+                        }
                     }
                 }
                 _ => (),
