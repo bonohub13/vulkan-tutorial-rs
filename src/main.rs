@@ -1,4 +1,5 @@
 mod app;
+mod ray_tracing;
 
 use anyhow::{bail, Result};
 use app::App;
@@ -11,12 +12,15 @@ use winit::{
     platform::run_return::EventLoopExtRunReturn,
 };
 
+const FRAMES_TO_RENDER: u32 = 10;
+
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
     let mut app = App::new(&event_loop, None, None)?;
     let mut current_time = time::Instant::now();
     let mut keys_pressed: [Option<VirtualKeyCode>; 10] =
         [None, None, None, None, None, None, None, None, None, None];
+    let mut rendered_frames = FRAMES_TO_RENDER;
 
     let result = event_loop
         .borrow_mut()
@@ -53,7 +57,9 @@ fn main() -> Result<()> {
                     }) => match state {
                         ElementState::Pressed => {
                             if !keys_pressed.contains(&virtual_keycode) {
-                                if let Some(key_unassigned) =
+                                if virtual_keycode == Some(VirtualKeyCode::Return) {
+                                    rendered_frames = 0;
+                                } else if let Some(key_unassigned) =
                                     keys_pressed.iter_mut().filter(|key| key.is_none()).next()
                                 {
                                     *key_unassigned = virtual_keycode;
@@ -74,12 +80,17 @@ fn main() -> Result<()> {
                 },
                 Event::RedrawRequested(_) => {}
                 Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {}
-                Event::MainEventsCleared => app
-                    .draw_frame(Some(control_flow), frame_time, &keys_pressed)
-                    .unwrap_or_else(|e| {
-                        eprintln!("{:?}", e);
-                        *control_flow = ControlFlow::ExitWithCode(0x10);
-                    }),
+                Event::MainEventsCleared => {
+                    // Only render if the ENTER key is pressed
+                    if rendered_frames < FRAMES_TO_RENDER {
+                        app.draw_frame(Some(control_flow), frame_time, &keys_pressed)
+                            .unwrap_or_else(|e| {
+                                eprintln!("{:?}", e);
+                                *control_flow = ControlFlow::ExitWithCode(0x10);
+                            });
+                        rendered_frames += 1;
+                    }
+                }
                 _ => (),
             }
 
