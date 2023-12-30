@@ -1,5 +1,6 @@
 SHELL := bash
 CC := $(shell which cargo)
+CHMOD := $(shell which chmod)
 GLSLC := $(shell which glslc)
 TAR := $(shell which tar)
 PIGZ := $(shell which pigz)
@@ -13,6 +14,9 @@ LIB_DIR :=
 CARGO_TOML := Cargo.toml
 
 all: build run
+
+init:
+	$(CHMOD) u=rwx ${SCRIPT_DIR}/*
 
 # Rust code
 clean:
@@ -40,10 +44,7 @@ run:
 	./target/debug/${BIN}
 
 build-shaders:
-	$(GLSLC) shaders/simple_shader.frag -o shaders/simple_shader.frag.spv
-	$(GLSLC) shaders/simple_shader.vert -o shaders/simple_shader.vert.spv
-	$(GLSLC) shaders/point_light.frag -o shaders/point_light.frag.spv
-	$(GLSLC) shaders/point_light.vert -o shaders/point_light.vert.spv
+	${SCRIPT_DIR}/build-shaders.sh
 
 build-linux-image:
 	cp Cargo.toml docker
@@ -68,7 +69,7 @@ docker-release:
 
 grab-models:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/gdown sh \
-		-c "source ${SCRIPT_DIR}/grab_models.sh && source ${SCRIPT_DIR}/grab-pastebin.sh quad"
+		-c "./${SCRIPT_DIR}/grab_models.sh && source ${SCRIPT_DIR}/grab-pastebin.sh quad"
 
 docker-debug:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/linux bash

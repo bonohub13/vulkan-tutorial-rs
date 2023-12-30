@@ -21,6 +21,14 @@ git checktout tutorial_01
 
 ## How do you build this?
 There are 2 ways you can build the codes.
+
+0. Prerequisites \
+    This project includes some custom scripts that need executable priviledges
+    for building shader codes and etc. \
+    Please run the following command to make the scripts executable.
+    ```
+    make init
+    ```
 1. Native
     1. Install [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html)
     2. Install Vulkan SDK
@@ -47,6 +55,10 @@ There are 2 ways you can build the codes.
             ```
             make docker-build
             ```
+
+## ::: UPDATES :::
+- Added `raytracing-cpu` branch to implement CPU side raytracer. \
+(Dec 30 2023)
 
 ## Wishes
 Please feel free to file an issue if there are wierd implementation, bad codes, bugs, and etc. 
