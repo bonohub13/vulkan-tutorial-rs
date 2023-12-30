@@ -3,5 +3,9 @@
 /shaders/*.spv
 /Cargo.lock
 /lve_rs/Cargo.lock
-/models
+/models/colored_cube.obj
+/models/cube.obj
+/models/flat_vase.obj
+/models/quad.obj
+/models/smooth_vase.obj
 /.venv

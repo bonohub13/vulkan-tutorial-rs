@@ -7,7 +7,7 @@ PIGZ := $(shell which pigz)
 PWD := $(shell pwd)
 PROJECT_NAME := $(shell pwd | sed "s#.*/##")
 DOCKER_IMAGE_NAME := $(shell pwd | sed "s#.*/##" | tr [:upper:] [:lower:])
-BIN := ${PROJECT_NAME}
+BIN := vulkan-tutorial
 SRC_DIR := src
 SCRIPT_DIR := scripts
 LIB_DIR := 
@@ -40,8 +40,11 @@ release: fmt build-shaders
 	(cd lve_rs && $(CC) build --release)
 	$(CC) build --release
 
-run:
+run: fmt build-shaders
 	./target/debug/${BIN}
+
+run-release: fmt build-shaders
+	./target/release/${BIN}
 
 build-shaders:
 	${SCRIPT_DIR}/build-shaders.sh
@@ -69,7 +72,7 @@ docker-release:
 
 grab-models:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/gdown sh \
-		-c "./${SCRIPT_DIR}/grab_models.sh && source ${SCRIPT_DIR}/grab-pastebin.sh quad"
+		-c "./${SCRIPT_DIR}/grab_models.sh && ./${SCRIPT_DIR}/grab-pastebin.sh quad"
 
 docker-debug:
 	docker run --rm -it -v $(shell pwd):/app ${DOCKER_IMAGE_NAME}/linux bash
@@ -79,8 +82,7 @@ docker-debug-gdown:
 
 docker-run: docker-build run
 
-docker-run-release: docker-release
-	./target/release/${BIN}
+docker-run-release: docker-release run-release
 
 compress: clean
 	@cd ../ && ( \
