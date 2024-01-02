@@ -17,11 +17,12 @@ pub struct PointLightSystem {
 impl PointLightSystem {
     pub fn new(
         device: &crate::Device,
+        swap_chain: &crate::SwapChain,
         render_pass: &vk::RenderPass,
         global_set_layout: &vk::DescriptorSetLayout,
     ) -> Result<Self> {
         let pipeline_layout = Self::create_pipeline_layout(device, global_set_layout)?;
-        let pipeline = Self::create_pipeline(device, &pipeline_layout, render_pass)?;
+        let pipeline = Self::create_pipeline(device, swap_chain, &pipeline_layout, render_pass)?;
         Ok(Self {
             pipeline_layout,
             pipeline,
@@ -186,6 +187,7 @@ impl PointLightSystem {
 
     fn create_pipeline(
         device: &crate::Device,
+        swap_chain: &crate::SwapChain,
         pipeline_layout: &vk::PipelineLayout,
         render_pass: &vk::RenderPass,
     ) -> Result<Box<crate::Pipeline>> {
@@ -194,7 +196,7 @@ impl PointLightSystem {
             "Cannot create pipeline before pipeline layout"
         );
 
-        let mut config_info = crate::Pipeline::enable_alpha_blending();
+        let mut config_info = crate::Pipeline::enable_alpha_blending(swap_chain);
 
         config_info.binding_descriptions.clear();
         config_info.attribute_descriptions.clear();

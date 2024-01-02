@@ -57,7 +57,7 @@ impl Pipeline {
         )
     }
 
-    pub fn default_pipeline_config_info() -> PipelineConfigInfo {
+    pub fn default_pipeline_config_info(swap_chain: &crate::SwapChain) -> PipelineConfigInfo {
         PipelineConfigInfo {
             binding_descriptions: crate::Vertex::binding_descriptions(),
             attribute_descriptions: crate::Vertex::attribute_descriptions(),
@@ -83,7 +83,7 @@ impl Pipeline {
                 .build(),
             multisample_info: vk::PipelineMultisampleStateCreateInfo::builder()
                 .sample_shading_enable(false)
-                .rasterization_samples(vk::SampleCountFlags::TYPE_1)
+                .rasterization_samples(swap_chain.query_sample_count())
                 .min_sample_shading(1.0)
                 .sample_mask(&[])
                 .alpha_to_coverage_enable(false)
@@ -118,7 +118,7 @@ impl Pipeline {
         }
     }
 
-    pub fn enable_alpha_blending() -> PipelineConfigInfo {
+    pub fn enable_alpha_blending(swap_chain: &crate::SwapChain) -> PipelineConfigInfo {
         PipelineConfigInfo {
             binding_descriptions: crate::Vertex::binding_descriptions(),
             attribute_descriptions: crate::Vertex::attribute_descriptions(),
@@ -144,7 +144,7 @@ impl Pipeline {
                 .build(),
             multisample_info: vk::PipelineMultisampleStateCreateInfo::builder()
                 .sample_shading_enable(false)
-                .rasterization_samples(vk::SampleCountFlags::TYPE_1)
+                .rasterization_samples(swap_chain.query_sample_count())
                 .min_sample_shading(1.0)
                 .sample_mask(&[])
                 .alpha_to_coverage_enable(false)

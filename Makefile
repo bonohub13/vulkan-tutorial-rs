@@ -4,6 +4,7 @@ CHMOD := $(shell which chmod)
 GLSLC := $(shell which glslc)
 TAR := $(shell which tar)
 PIGZ := $(shell which pigz)
+TEE := $(shell which tee)
 PWD := $(shell pwd)
 PROJECT_NAME := $(shell pwd | sed "s#.*/##")
 DOCKER_IMAGE_NAME := $(shell pwd | sed "s#.*/##" | tr [:upper:] [:lower:])
@@ -11,6 +12,9 @@ BIN := vulkan-tutorial
 SRC_DIR := src
 SCRIPT_DIR := scripts
 LIB_DIR := 
+LOG_DIR := logs
+DEBUG_LOG_FILE := ${LOG_DIR}/debug_%Y%m%d-%H%M%S.log
+RELEASE_LOG_FILE := ${LOG_DIR}/release_%Y%m%d-%H%M%S.log
 CARGO_TOML := Cargo.toml
 
 all: build run
@@ -41,10 +45,14 @@ release: fmt build-shaders
 	$(CC) build --release
 
 run: fmt build-shaders
-	./target/debug/${BIN}
+	@[ -d ${LOG_DIR} ] || mkdir -v ${LOG_DIR}
+	./target/debug/${BIN} 2>&1 \
+		| $(TEE) ${TEE_FLAGS} $(shell date "+${DEBUG_LOG_FILE}")
 
 run-release: fmt build-shaders
-	./target/release/${BIN}
+	@[ -d ${LOG_DIR} ] || mkdir -v ${LOG_DIR}
+	./target/release/${BIN} 2>&1 \
+		| $(TEE) ${TEE_FLAGS} $(shell date "+${RELEASE_LOG_FILE}")
 
 build-shaders:
 	${SCRIPT_DIR}/build-shaders.sh
@@ -88,5 +96,5 @@ compress: clean
 	@cd ../ && ( \
 		[ -f ${PIGZ} ] \
 			&& $(TAR) --use-compress-program="pigz --best --recursive | pv" -cvf ${PROJECT_NAME}.tar.gz ${PROJECT_NAME} \
-			|| $(TAR) czvf vulkan-tutorial.tar.gz ${PROJECT_NAME} \
+			|| $(TAR) czvf ${PROJECT_NAME}.tar.gz ${PROJECT_NAME} \
 	) 

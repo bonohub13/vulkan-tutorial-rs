@@ -73,10 +73,12 @@ impl App {
         let simple_render_system = lve_rs::SimpleRenderSystem::new(
             &device,
             renderer.swap_chain_render_pass(),
+            renderer.swap_chain(),
             &global_set_layout.descriptor_set_layout(),
         )?;
         let point_light_system = lve_rs::PointLightSystem::new(
             &device,
+            renderer.swap_chain(),
             renderer.swap_chain_render_pass(),
             &global_set_layout.descriptor_set_layout(),
         )?;

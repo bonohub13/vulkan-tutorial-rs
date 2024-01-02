@@ -446,10 +446,12 @@ impl Device {
                 })
                 .collect::<Vec<_>>()
         };
+        let device_features = unsafe { instance.get_physical_device_features(*physical_device) };
         let device = {
             let create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_create_infos)
-                .enabled_extension_names(&Self::DEVICE_EXTENSIONS);
+                .enabled_extension_names(&Self::DEVICE_EXTENSIONS)
+                .enabled_features(&device_features);
 
             unsafe { instance.create_device(*physical_device, &create_info, None) }?
         };
@@ -520,7 +522,8 @@ impl Device {
         Ok(indices.is_complete()
             && extensions_supported
             && swap_chain_adequate
-            && supported_features.sampler_anisotropy != 0)
+            && supported_features.sampler_anisotropy != 0
+            && supported_features.sample_rate_shading != 0)
     }
 
     fn get_required_extensions(window: &crate::Window) -> Result<Vec<*const i8>> {

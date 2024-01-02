@@ -18,10 +18,11 @@ impl SimpleRenderSystem {
     pub fn new(
         device: &crate::Device,
         render_pass: &vk::RenderPass,
+        swap_chain: &crate::SwapChain,
         global_set_layout: &vk::DescriptorSetLayout,
     ) -> Result<Self> {
         let pipeline_layout = Self::create_pipeline_layout(device, global_set_layout)?;
-        let pipeline = Self::create_pipeline(device, &pipeline_layout, render_pass)?;
+        let pipeline = Self::create_pipeline(device, swap_chain, &pipeline_layout, render_pass)?;
         Ok(Self {
             pipeline_layout,
             pipeline,
@@ -112,6 +113,7 @@ impl SimpleRenderSystem {
 
     fn create_pipeline(
         device: &crate::Device,
+        swap_chain: &crate::SwapChain,
         pipeline_layout: &vk::PipelineLayout,
         render_pass: &vk::RenderPass,
     ) -> Result<Box<crate::Pipeline>> {
@@ -120,7 +122,7 @@ impl SimpleRenderSystem {
             "Cannot create pipeline before pipeline layout"
         );
 
-        let mut config_info = crate::Pipeline::default_pipeline_config_info();
+        let mut config_info = crate::Pipeline::default_pipeline_config_info(swap_chain);
 
         config_info.render_pass = *render_pass;
         config_info.pipeline_layout = *pipeline_layout;

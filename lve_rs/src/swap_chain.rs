@@ -12,6 +12,10 @@ pub struct SwapChain {
     depth_image_views: Vec<vk::ImageView>,
     swap_chain_images: Vec<vk::Image>,
     swap_chain_image_views: Vec<vk::ImageView>,
+    sample_count: vk::SampleCountFlags,
+    color_images: Vec<vk::Image>,
+    color_image_views: Vec<vk::ImageView>,
+    color_image_memorys: Vec<vk::DeviceMemory>,
     window_extent: vk::Extent2D,
     extension: vk_khr::Swapchain,
     swap_chain: vk::SwapchainKHR,
@@ -41,6 +45,10 @@ impl SwapChain {
             depth_image_views: vec![],
             swap_chain_images: vec![],
             swap_chain_image_views: vec![],
+            sample_count: vk::SampleCountFlags::empty(),
+            color_images: vec![],
+            color_image_views: vec![],
+            color_image_memorys: vec![],
             window_extent: vk::Extent2D::default(),
             extension: vk_khr::Swapchain::new(device.instance(), device.device()),
             swap_chain: vk::SwapchainKHR::null(),
@@ -63,8 +71,9 @@ impl SwapChain {
     }
 
     pub unsafe fn destroy(&mut self, device: &crate::Device) {
+        let device_ref = device.device();
         self.swap_chain_image_views.iter().for_each(|image_view| {
-            device.device().destroy_image_view(*image_view, None);
+            device_ref.destroy_image_view(*image_view, None);
         });
         self.swap_chain_image_views.clear();
 
@@ -72,36 +81,29 @@ impl SwapChain {
             self.extension.destroy_swapchain(self.swap_chain, None);
         }
 
+        (0..self.color_images.len()).into_iter().for_each(|index| {
+            device_ref.destroy_image_view(self.color_image_views[index], None);
+            device_ref.destroy_image(self.color_images[index], None);
+            device_ref.free_memory(self.color_image_memorys[index], None);
+        });
         (0..self.depth_images.len()).into_iter().for_each(|index| {
-            device
-                .device()
-                .destroy_image_view(self.depth_image_views[index], None);
-            device
-                .device()
-                .destroy_image(self.depth_images[index], None);
-            device
-                .device()
-                .free_memory(self.depth_image_memories[index], None);
+            device_ref.destroy_image_view(self.depth_image_views[index], None);
+            device_ref.destroy_image(self.depth_images[index], None);
+            device_ref.free_memory(self.depth_image_memories[index], None);
         });
 
         self.swap_chain_framebuffers.iter().for_each(|framebuffer| {
-            device.device().destroy_framebuffer(*framebuffer, None);
+            device_ref.destroy_framebuffer(*framebuffer, None);
         });
 
-        device.device().destroy_render_pass(self.render_pass, None);
+        device_ref.destroy_render_pass(self.render_pass, None);
 
         (0..Self::MAX_FRAMES_IN_FLIGHT as usize)
             .into_iter()
             .for_each(|index| {
-                device
-                    .device()
-                    .destroy_semaphore(self.render_finished_semaphores[index], None);
-                device
-                    .device()
-                    .destroy_semaphore(self.image_available_semaphores[index], None);
-                device
-                    .device()
-                    .destroy_fence(self.in_flight_fences[index], None);
+                device_ref.destroy_semaphore(self.render_finished_semaphores[index], None);
+                device_ref.destroy_semaphore(self.image_available_semaphores[index], None);
+                device_ref.destroy_fence(self.in_flight_fences[index], None);
             });
     }
 
@@ -148,6 +150,11 @@ impl SwapChain {
     #[inline]
     pub fn height(&self) -> u32 {
         self.swap_chain_extent.height
+    }
+
+    #[inline]
+    pub fn query_sample_count(&self) -> vk::SampleCountFlags {
+        self.sample_count
     }
 
     #[inline]
@@ -269,19 +276,33 @@ impl SwapChain {
         extent: vk::Extent2D,
         previous_swap_chain: &vk::SwapchainKHR,
     ) -> Result<Self> {
+        let sample_count = Self::query_max_sample_count(device);
         let (extension, swap_chain, swap_chain_images, swap_chain_image_format, swap_chain_extent) =
             Self::create_swap_chain(device, &extent, previous_swap_chain)?;
         let swap_chain_image_views =
             Self::create_image_views(device, &swap_chain_images, swap_chain_image_format)?;
-        let render_pass = Self::create_render_pass(device, swap_chain_image_format)?;
+        let render_pass = Self::create_render_pass(device, swap_chain_image_format, sample_count)?;
         let (depth_images, depth_image_memories, depth_image_views, swap_chain_depth_format) =
-            Self::create_depth_resources(device, &swap_chain_extent, &swap_chain_images)?;
+            Self::create_depth_resources(
+                device,
+                &swap_chain_extent,
+                &swap_chain_images,
+                sample_count,
+            )?;
+        let (color_images, color_image_memory, color_image_views) = Self::create_color_resources(
+            device,
+            &swap_chain_extent,
+            &swap_chain_images,
+            swap_chain_image_format,
+            sample_count,
+        )?;
         let swap_chain_framebuffers = Self::create_framebuffers(
             device,
             &swap_chain_extent,
             &swap_chain_images,
             &swap_chain_image_views,
             &depth_image_views,
+            &color_image_views,
             &render_pass,
         )?;
         let (
@@ -302,6 +323,10 @@ impl SwapChain {
             depth_image_views,
             swap_chain_images,
             swap_chain_image_views,
+            sample_count,
+            color_images,
+            color_image_views,
+            color_image_memorys: color_image_memory,
             window_extent: extent,
             extension,
             swap_chain,
@@ -426,6 +451,7 @@ impl SwapChain {
         device: &crate::Device,
         swap_chain_extent: &vk::Extent2D,
         swap_chain_images: &[vk::Image],
+        samples: vk::SampleCountFlags,
     ) -> Result<(
         Vec<vk::Image>,
         Vec<vk::DeviceMemory>,
@@ -447,7 +473,7 @@ impl SwapChain {
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-            .samples(vk::SampleCountFlags::TYPE_1)
+            .samples(samples)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
         let mut depth_images = (0..image_count)
@@ -491,31 +517,103 @@ impl SwapChain {
         ))
     }
 
+    fn create_color_resources(
+        device: &crate::Device,
+        swap_chain_extent: &vk::Extent2D,
+        swap_chain_images: &[vk::Image],
+        format: vk::Format,
+        samples: vk::SampleCountFlags,
+    ) -> Result<(Vec<vk::Image>, Vec<vk::DeviceMemory>, Vec<vk::ImageView>)> {
+        let image_count = swap_chain_images.len();
+        let image_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: swap_chain_extent.width,
+                height: swap_chain_extent.height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(
+                vk::ImageUsageFlags::TRANSIENT_ATTACHMENT | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+            )
+            .samples(samples)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+        let mut color_images = (0..image_count)
+            .into_iter()
+            .map(|_| vk::Image::null())
+            .collect::<Vec<_>>();
+        let mut color_image_memory = (0..image_count)
+            .into_iter()
+            .map(|_| vk::DeviceMemory::null())
+            .collect::<Vec<_>>();
+        let mut color_image_views = (0..image_count)
+            .into_iter()
+            .map(|_| vk::ImageView::null())
+            .collect::<Vec<_>>();
+
+        for index in 0..image_count {
+            (color_images[index], color_image_memory[index]) = device
+                .create_image_with_info(&image_info, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
+            color_image_views[index] = {
+                let create_info = vk::ImageViewCreateInfo::builder()
+                    .image(color_images[index])
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(format)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    });
+
+                unsafe { device.device().create_image_view(&create_info, None) }?
+            };
+        }
+
+        Ok((color_images, color_image_memory, color_image_views))
+    }
+
     fn create_render_pass(
         device: &crate::Device,
         swap_chain_image_format: vk::Format,
+        samples: vk::SampleCountFlags,
     ) -> Result<vk::RenderPass> {
         let create_info = {
             let attachment = [
                 vk::AttachmentDescription::builder()
                     .format(swap_chain_image_format)
-                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .samples(samples)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
                     .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
                     .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
                     .initial_layout(vk::ImageLayout::UNDEFINED)
-                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                    .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .build(),
                 vk::AttachmentDescription::builder()
                     .format(Self::find_depth_format_from_device(device)?)
-                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .samples(samples)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::DONT_CARE)
                     .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
                     .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
                     .initial_layout(vk::ImageLayout::UNDEFINED)
                     .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                    .build(),
+                vk::AttachmentDescription::builder()
+                    .format(swap_chain_image_format)
+                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .load_op(vk::AttachmentLoadOp::DONT_CARE)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                    .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                    .initial_layout(vk::ImageLayout::UNDEFINED)
+                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
                     .build(),
             ];
             let color_attachment = vk::AttachmentReference::builder()
@@ -526,11 +624,16 @@ impl SwapChain {
                 .attachment(1)
                 .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
                 .build();
+            let color_attachment_resolve = vk::AttachmentReference::builder()
+                .attachment(2)
+                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .build();
             let subpass = {
                 vk::SubpassDescription::builder()
                     .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
                     .color_attachments(std::slice::from_ref(&color_attachment))
                     .depth_stencil_attachment(&depth_stencil_attachment)
+                    .resolve_attachments(std::slice::from_ref(&color_attachment_resolve))
             };
             let dependency = vk::SubpassDependency::builder()
                 .src_subpass(vk::SUBPASS_EXTERNAL)
@@ -566,6 +669,7 @@ impl SwapChain {
         swap_chain_images: &[vk::Image],
         swap_chain_image_views: &[vk::ImageView],
         depth_image_views: &[vk::ImageView],
+        color_image_views: &[vk::ImageView],
         render_pass: &vk::RenderPass,
     ) -> Result<Vec<vk::Framebuffer>> {
         let image_count = swap_chain_images.len();
@@ -577,7 +681,11 @@ impl SwapChain {
 
         for index in 0..image_count {
             let create_info = {
-                let attachments = [swap_chain_image_views[index], depth_image_views[index]];
+                let attachments = [
+                    color_image_views[index],
+                    depth_image_views[index],
+                    swap_chain_image_views[index],
+                ];
 
                 vk::FramebufferCreateInfo::builder()
                     .render_pass(*render_pass)
@@ -714,5 +822,29 @@ impl SwapChain {
             vk::ImageTiling::OPTIMAL,
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         )?)
+    }
+
+    fn query_max_sample_count(device: &crate::Device) -> vk::SampleCountFlags {
+        let counts = device.properties.limits.framebuffer_color_sample_counts
+            & device.properties.limits.framebuffer_depth_sample_counts;
+        let sample_count = if counts.contains(vk::SampleCountFlags::TYPE_64) {
+            vk::SampleCountFlags::TYPE_64
+        } else if counts.contains(vk::SampleCountFlags::TYPE_32) {
+            vk::SampleCountFlags::TYPE_32
+        } else if counts.contains(vk::SampleCountFlags::TYPE_16) {
+            vk::SampleCountFlags::TYPE_16
+        } else if counts.contains(vk::SampleCountFlags::TYPE_8) {
+            vk::SampleCountFlags::TYPE_8
+        } else if counts.contains(vk::SampleCountFlags::TYPE_4) {
+            vk::SampleCountFlags::TYPE_4
+        } else if counts.contains(vk::SampleCountFlags::TYPE_2) {
+            vk::SampleCountFlags::TYPE_2
+        } else {
+            vk::SampleCountFlags::TYPE_1
+        };
+
+        println!("Sample count (MultiSampling): {:?}", sample_count);
+
+        sample_count
     }
 }
