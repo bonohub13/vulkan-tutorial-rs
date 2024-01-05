@@ -247,14 +247,14 @@ impl SwapChain {
             Ok(_) => Ok(false),
             Err(err) => {
                 if err == vk::Result::ERROR_OUT_OF_DATE_KHR || err == vk::Result::SUBOPTIMAL_KHR {
-                    Ok(true)
+                    return Ok(true);
                 } else {
                     Err(err)
                 }
             }
         }?;
 
-        self.current_frame = (self.current_frame + 1) % (Self::MAX_FRAMES_IN_FLIGHT as usize);
+        self.current_frame = (self.current_frame + 1) % Self::MAX_FRAMES_IN_FLIGHT as usize;
 
         Ok(result)
     }

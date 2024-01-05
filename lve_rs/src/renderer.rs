@@ -106,6 +106,11 @@ impl Renderer {
         unsafe {
             device
                 .device()
+                .reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::default())
+        }?;
+        unsafe {
+            device
+                .device()
                 .begin_command_buffer(command_buffer, &begin_info)
         }?;
 
@@ -133,6 +138,7 @@ impl Renderer {
             self.current_image_index,
         ) {
             Ok(window_resized) => {
+                self.frame_started = false;
                 if window_resized || window.was_window_resized() {
                     window.reset_window_resized_flag();
                     let swap_chain = Self::recreate_swap_chain(
@@ -146,6 +152,8 @@ impl Renderer {
                         self.swap_chain.destroy(device);
                     }
                     self.swap_chain = swap_chain;
+
+                    return Ok(());
                 }
             }
 
@@ -163,13 +171,15 @@ impl Renderer {
                         self.swap_chain.destroy(device);
                     }
                     self.swap_chain = swap_chain;
+                    self.frame_started = false;
+
+                    return Ok(());
                 } else {
                     bail!("Failed to present swap chain image!")
                 }
             }
         };
 
-        self.frame_started = false;
         self.current_frame_index =
             (self.current_frame_index + 1) % crate::SwapChain::MAX_FRAMES_IN_FLIGHT as usize;
 
