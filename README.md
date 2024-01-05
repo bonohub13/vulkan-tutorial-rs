@@ -57,8 +57,9 @@ There are 2 ways you can build the codes.
             ```
 
 ## ::: UPDATES :::
-- Added `raytracing-cpu` branch to implement CPU side raytracer. \
-(Dec 30 2023)
+- ~~Added `raytracing-cpu` branch to implement CPU side raytracer. \
+(Dec 30 2023)~~
+    - Removed branch (re-evaluating implementation)
 
 ## Wishes
 Please feel free to file an issue if there are wierd implementation, bad codes, bugs, and etc. 
