@@ -24,7 +24,7 @@ init:
 
 # Rust code
 clean:
-	@rm -rvf shaders/*.spv
+	@rm -rvf shaders/*.spv ${LOG_DIR}/*
 	(cd lve_rs && $(CC) clean)
 	$(CC) clean
 
