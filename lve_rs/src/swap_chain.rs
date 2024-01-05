@@ -214,17 +214,14 @@ impl SwapChain {
         self.images_in_flight[image_index] = self.in_flight_fences[self.current_frame];
 
         let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
-        let submit_info = {
-            let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
-            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-
-            vk::SubmitInfo::builder()
-                .wait_semaphores(&wait_semaphores)
-                .wait_dst_stage_mask(&wait_stages)
-                .command_buffers(std::slice::from_ref(buffer))
-                .signal_semaphores(&signal_semaphores)
-                .build()
-        };
+        let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(&wait_semaphores)
+            .wait_dst_stage_mask(&wait_stages)
+            .command_buffers(std::slice::from_ref(buffer))
+            .signal_semaphores(&signal_semaphores)
+            .build();
 
         unsafe {
             device.device().reset_fences(std::slice::from_ref(
@@ -583,82 +580,79 @@ impl SwapChain {
         swap_chain_image_format: vk::Format,
         samples: vk::SampleCountFlags,
     ) -> Result<vk::RenderPass> {
-        let create_info = {
-            let attachment = [
-                vk::AttachmentDescription::builder()
-                    .format(swap_chain_image_format)
-                    .samples(samples)
-                    .load_op(vk::AttachmentLoadOp::CLEAR)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(vk::ImageLayout::UNDEFINED)
-                    .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .build(),
-                vk::AttachmentDescription::builder()
-                    .format(Self::find_depth_format_from_device(device)?)
-                    .samples(samples)
-                    .load_op(vk::AttachmentLoadOp::CLEAR)
-                    .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                    .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(vk::ImageLayout::UNDEFINED)
-                    .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                    .build(),
-                vk::AttachmentDescription::builder()
-                    .format(swap_chain_image_format)
-                    .samples(vk::SampleCountFlags::TYPE_1)
-                    .load_op(vk::AttachmentLoadOp::DONT_CARE)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                    .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                    .initial_layout(vk::ImageLayout::UNDEFINED)
-                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                    .build(),
-            ];
-            let color_attachment = vk::AttachmentReference::builder()
-                .attachment(0)
-                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .build();
-            let depth_stencil_attachment = vk::AttachmentReference::builder()
-                .attachment(1)
-                .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                .build();
-            let color_attachment_resolve = vk::AttachmentReference::builder()
-                .attachment(2)
-                .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .build();
-            let subpass = {
-                vk::SubpassDescription::builder()
-                    .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                    .color_attachments(std::slice::from_ref(&color_attachment))
-                    .depth_stencil_attachment(&depth_stencil_attachment)
-                    .resolve_attachments(std::slice::from_ref(&color_attachment_resolve))
-            };
-            let dependency = vk::SubpassDependency::builder()
-                .src_subpass(vk::SUBPASS_EXTERNAL)
-                .src_stage_mask(
-                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-                        | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                )
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_subpass(0)
-                .dst_stage_mask(
-                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-                        | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                )
-                .dst_access_mask(
-                    vk::AccessFlags::COLOR_ATTACHMENT_WRITE
-                        | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                )
-                .build();
-
-            vk::RenderPassCreateInfo::builder()
-                .attachments(&attachment)
-                .subpasses(std::slice::from_ref(&subpass))
-                .dependencies(std::slice::from_ref(&dependency))
-                .build()
+        let attachment = [
+            vk::AttachmentDescription::builder()
+                .format(swap_chain_image_format)
+                .samples(samples)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .build(),
+            vk::AttachmentDescription::builder()
+                .format(Self::find_depth_format_from_device(device)?)
+                .samples(samples)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                .build(),
+            vk::AttachmentDescription::builder()
+                .format(swap_chain_image_format)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .load_op(vk::AttachmentLoadOp::DONT_CARE)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                .build(),
+        ];
+        let color_attachment = vk::AttachmentReference::builder()
+            .attachment(0)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .build();
+        let depth_stencil_attachment = vk::AttachmentReference::builder()
+            .attachment(1)
+            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .build();
+        let color_attachment_resolve = vk::AttachmentReference::builder()
+            .attachment(2)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .build();
+        let subpass = {
+            vk::SubpassDescription::builder()
+                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+                .color_attachments(std::slice::from_ref(&color_attachment))
+                .depth_stencil_attachment(&depth_stencil_attachment)
+                .resolve_attachments(std::slice::from_ref(&color_attachment_resolve))
         };
+        let dependency = vk::SubpassDependency::builder()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .src_stage_mask(
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_subpass(0)
+            .dst_stage_mask(
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
+            .dst_access_mask(
+                vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            )
+            .build();
+        let create_info = vk::RenderPassCreateInfo::builder()
+            .attachments(&attachment)
+            .subpasses(std::slice::from_ref(&subpass))
+            .dependencies(std::slice::from_ref(&dependency))
+            .build();
 
         Ok(unsafe { device.device().create_render_pass(&create_info, None) }?)
     }
@@ -680,21 +674,18 @@ impl SwapChain {
         );
 
         for index in 0..image_count {
-            let create_info = {
-                let attachments = [
-                    color_image_views[index],
-                    depth_image_views[index],
-                    swap_chain_image_views[index],
-                ];
-
-                vk::FramebufferCreateInfo::builder()
-                    .render_pass(*render_pass)
-                    .attachments(&attachments)
-                    .width(swap_chain_extent.width)
-                    .height(swap_chain_extent.height)
-                    .layers(1)
-                    .build()
-            };
+            let attachments = [
+                color_image_views[index],
+                depth_image_views[index],
+                swap_chain_image_views[index],
+            ];
+            let create_info = vk::FramebufferCreateInfo::builder()
+                .render_pass(*render_pass)
+                .attachments(&attachments)
+                .width(swap_chain_extent.width)
+                .height(swap_chain_extent.height)
+                .layers(1)
+                .build();
 
             swap_chain_framebuffers[index] =
                 unsafe { device.device().create_framebuffer(&create_info, None) }?;
