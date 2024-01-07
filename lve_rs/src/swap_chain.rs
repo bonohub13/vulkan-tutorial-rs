@@ -7,8 +7,12 @@ pub struct SwapChain {
     swap_chain_extent: vk::Extent2D,
     swap_chain_framebuffers: Vec<vk::Framebuffer>,
     render_pass: vk::RenderPass,
+    storage_images: Vec<vk::Image>,
+    storage_image_views: Vec<vk::ImageView>,
+    storage_image_memory: Vec<vk::DeviceMemory>,
+    storage_samplers: Vec<vk::Sampler>,
     depth_images: Vec<vk::Image>,
-    depth_image_memories: Vec<vk::DeviceMemory>,
+    depth_image_memory: Vec<vk::DeviceMemory>,
     depth_image_views: Vec<vk::ImageView>,
     swap_chain_images: Vec<vk::Image>,
     swap_chain_image_views: Vec<vk::ImageView>,
@@ -20,6 +24,8 @@ pub struct SwapChain {
     in_flight_fences: Vec<vk::Fence>,
     images_in_flight: Vec<vk::Fence>,
     current_frame: usize,
+    pub write_descriptors: Vec<vk::DescriptorImageInfo>,
+    pub read_descriptors: Vec<vk::DescriptorImageInfo>,
 }
 
 impl SwapChain {
@@ -36,8 +42,12 @@ impl SwapChain {
             swap_chain_extent: vk::Extent2D::default(),
             swap_chain_framebuffers: vec![],
             render_pass: vk::RenderPass::null(),
+            storage_images: vec![],
+            storage_image_views: vec![],
+            storage_image_memory: vec![],
+            storage_samplers: vec![],
             depth_images: vec![],
-            depth_image_memories: vec![],
+            depth_image_memory: vec![],
             depth_image_views: vec![],
             swap_chain_images: vec![],
             swap_chain_image_views: vec![],
@@ -49,6 +59,8 @@ impl SwapChain {
             in_flight_fences: vec![],
             images_in_flight: vec![],
             current_frame: 0,
+            write_descriptors: vec![],
+            read_descriptors: vec![],
         }
     }
 
@@ -63,8 +75,9 @@ impl SwapChain {
     }
 
     pub unsafe fn destroy(&mut self, device: &crate::Device) {
+        let device_ref = device.device();
         self.swap_chain_image_views.iter().for_each(|image_view| {
-            device.device().destroy_image_view(*image_view, None);
+            device_ref.destroy_image_view(*image_view, None);
         });
         self.swap_chain_image_views.clear();
 
@@ -72,36 +85,32 @@ impl SwapChain {
             self.extension.destroy_swapchain(self.swap_chain, None);
         }
 
+        (0..self.storage_images.len())
+            .into_iter()
+            .for_each(|index| {
+                device_ref.destroy_sampler(self.storage_samplers[index], None);
+                device_ref.destroy_image_view(self.storage_image_views[index], None);
+                device_ref.destroy_image(self.storage_images[index], None);
+                device_ref.free_memory(self.storage_image_memory[index], None);
+            });
         (0..self.depth_images.len()).into_iter().for_each(|index| {
-            device
-                .device()
-                .destroy_image_view(self.depth_image_views[index], None);
-            device
-                .device()
-                .destroy_image(self.depth_images[index], None);
-            device
-                .device()
-                .free_memory(self.depth_image_memories[index], None);
+            device_ref.destroy_image_view(self.depth_image_views[index], None);
+            device_ref.destroy_image(self.depth_images[index], None);
+            device_ref.free_memory(self.depth_image_memory[index], None);
         });
 
         self.swap_chain_framebuffers.iter().for_each(|framebuffer| {
-            device.device().destroy_framebuffer(*framebuffer, None);
+            device_ref.destroy_framebuffer(*framebuffer, None);
         });
 
-        device.device().destroy_render_pass(self.render_pass, None);
+        device_ref.destroy_render_pass(self.render_pass, None);
 
         (0..Self::MAX_FRAMES_IN_FLIGHT as usize)
             .into_iter()
             .for_each(|index| {
-                device
-                    .device()
-                    .destroy_semaphore(self.render_finished_semaphores[index], None);
-                device
-                    .device()
-                    .destroy_semaphore(self.image_available_semaphores[index], None);
-                device
-                    .device()
-                    .destroy_fence(self.in_flight_fences[index], None);
+                device_ref.destroy_semaphore(self.render_finished_semaphores[index], None);
+                device_ref.destroy_semaphore(self.image_available_semaphores[index], None);
+                device_ref.destroy_fence(self.in_flight_fences[index], None);
             });
     }
 
@@ -261,6 +270,74 @@ impl SwapChain {
             && self.swap_chain_depth_format == swap_chain.swap_chain_depth_format
     }
 
+    pub unsafe fn prepare_to_trace_barrier(
+        &self,
+        device: &crate::Device,
+        command_buffer: &vk::CommandBuffer,
+        frame_index: usize,
+    ) {
+        let device = device.device();
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(self.swap_chain_images[frame_index])
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(vk::AccessFlags::NONE_KHR)
+            .dst_access_mask(vk::AccessFlags::MEMORY_WRITE);
+
+        device.cmd_pipeline_barrier(
+            *command_buffer,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::DependencyFlags::default(),
+            &[],
+            &[],
+            std::slice::from_ref(&barrier),
+        )
+    }
+
+    pub unsafe fn enforce_barrier(
+        &self,
+        device: &crate::Device,
+        command_buffer: &vk::CommandBuffer,
+        frame_index: usize,
+    ) {
+        let device = device.device();
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::GENERAL)
+            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(self.swap_chain_images[frame_index])
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
+            .dst_access_mask(vk::AccessFlags::SHADER_READ);
+
+        device.cmd_pipeline_barrier(
+            *command_buffer,
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+            vk::DependencyFlags::default(),
+            &[],
+            &[],
+            std::slice::from_ref(&barrier),
+        )
+    }
+
     fn init(
         device: &crate::Device,
         extent: vk::Extent2D,
@@ -271,8 +348,16 @@ impl SwapChain {
         let swap_chain_image_views =
             Self::create_image_views(device, &swap_chain_images, swap_chain_image_format)?;
         let render_pass = Self::create_render_pass(device, swap_chain_image_format)?;
-        let (depth_images, depth_image_memories, depth_image_views, swap_chain_depth_format) =
+        let (depth_images, depth_image_memory, depth_image_views, swap_chain_depth_format) =
             Self::create_depth_resources(device, &swap_chain_extent, &swap_chain_images)?;
+        let (
+            storage_images,
+            storage_image_memory,
+            storage_image_views,
+            storage_samplers,
+            write_descriptors,
+            read_descriptors,
+        ) = Self::create_storage_resources(device, &swap_chain_extent, &swap_chain_images)?;
         let swap_chain_framebuffers = Self::create_framebuffers(
             device,
             &swap_chain_extent,
@@ -295,8 +380,12 @@ impl SwapChain {
             swap_chain_framebuffers,
             render_pass,
             depth_images,
-            depth_image_memories,
+            depth_image_memory,
             depth_image_views,
+            storage_images,
+            storage_image_memory,
+            storage_image_views,
+            storage_samplers,
             swap_chain_images,
             swap_chain_image_views,
             window_extent: extent,
@@ -307,6 +396,8 @@ impl SwapChain {
             in_flight_fences,
             images_in_flight,
             current_frame: 0,
+            write_descriptors,
+            read_descriptors,
         })
     }
 
@@ -419,6 +510,128 @@ impl SwapChain {
         Ok(swap_chain_image_views)
     }
 
+    fn create_resources<F: Fn(&[vk::Image]) -> Result<()>>(
+        device: &crate::Device,
+        swap_chain_extent: &vk::Extent2D,
+        swap_chain_images: &[vk::Image],
+        format: vk::Format,
+        usage: vk::ImageUsageFlags,
+        subresource_range: vk::ImageSubresourceRange,
+        transition_func: F,
+    ) -> Result<(Vec<vk::Image>, Vec<vk::DeviceMemory>, Vec<vk::ImageView>)> {
+        let image_count = swap_chain_images.len();
+        let image_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: swap_chain_extent.width,
+                height: swap_chain_extent.height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(usage)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+        let mut images = (0..image_count)
+            .into_iter()
+            .map(|_| vk::Image::null())
+            .collect::<Vec<_>>();
+        let mut image_memory = (0..image_count)
+            .into_iter()
+            .map(|_| vk::DeviceMemory::null())
+            .collect::<Vec<_>>();
+        let mut image_views = (0..image_count)
+            .into_iter()
+            .map(|_| vk::ImageView::null())
+            .collect::<Vec<_>>();
+
+        for (image, image_memory) in images.iter_mut().zip(image_memory.iter_mut()) {
+            (*image, *image_memory) = device
+                .create_image_with_info(&image_info, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
+        }
+        transition_func(&images)?;
+        for (image, image_view) in images.iter().zip(image_views.iter_mut()) {
+            *image_view = {
+                let create_info = vk::ImageViewCreateInfo::builder()
+                    .image(*image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(format)
+                    .subresource_range(subresource_range);
+
+                unsafe { device.device().create_image_view(&create_info, None) }?
+            };
+        }
+
+        Ok((images, image_memory, image_views))
+    }
+
+    unsafe fn transition_image_layout(
+        device: &crate::Device,
+        images: &[vk::Image],
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+    ) -> Result<()> {
+        let device_ref = device.device();
+        let (src_access_mask, dst_access_mask, source_stage, destination_stage) =
+            match (old_layout, new_layout) {
+                (vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL) => (
+                    vk::AccessFlags::NONE_KHR,
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::PipelineStageFlags::TOP_OF_PIPE,
+                    vk::PipelineStageFlags::TRANSFER,
+                ),
+                (vk::ImageLayout::UNDEFINED, vk::ImageLayout::GENERAL) => (
+                    vk::AccessFlags::NONE_KHR,
+                    vk::AccessFlags::MEMORY_WRITE,
+                    vk::PipelineStageFlags::TOP_OF_PIPE,
+                    vk::PipelineStageFlags::COMPUTE_SHADER,
+                ),
+                _ => (
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::AccessFlags::SHADER_READ,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                ),
+            };
+        let mut barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(old_layout)
+            .new_layout(new_layout)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(src_access_mask)
+            .dst_access_mask(dst_access_mask);
+
+        for image in images {
+            let command_buffer = device.begin_single_time_commands()?;
+
+            barrier.image = *image;
+            device_ref.cmd_pipeline_barrier(
+                command_buffer,
+                source_stage,
+                destination_stage,
+                vk::DependencyFlags::default(),
+                &[],
+                &[],
+                std::slice::from_ref(&barrier),
+            );
+
+            device.end_single_time_commands(&command_buffer)?;
+        }
+
+        Ok(())
+    }
+
     fn create_depth_resources(
         device: &crate::Device,
         swap_chain_extent: &vk::Extent2D,
@@ -430,61 +643,127 @@ impl SwapChain {
         vk::Format,
     )> {
         let depth_format = Self::find_depth_format_from_device(device)?;
-        let image_count = swap_chain_images.len();
-        let image_info = vk::ImageCreateInfo::builder()
-            .image_type(vk::ImageType::TYPE_2D)
-            .extent(vk::Extent3D {
-                width: swap_chain_extent.width,
-                height: swap_chain_extent.height,
-                depth: 1,
-            })
-            .mip_levels(1)
-            .array_layers(1)
-            .format(depth_format)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let mut depth_images = (0..image_count)
-            .into_iter()
-            .map(|_| vk::Image::null())
-            .collect::<Vec<_>>();
-        let mut depth_image_memories = (0..image_count)
-            .into_iter()
-            .map(|_| vk::DeviceMemory::null())
-            .collect::<Vec<_>>();
-        let mut depth_image_views = (0..image_count)
-            .into_iter()
-            .map(|_| vk::ImageView::null())
-            .collect::<Vec<_>>();
-
-        for index in 0..image_count {
-            (depth_images[index], depth_image_memories[index]) = device
-                .create_image_with_info(&image_info, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
-            depth_image_views[index] = {
-                let create_info = vk::ImageViewCreateInfo::builder()
-                    .image(depth_images[index])
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(depth_format)
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::DEPTH,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    });
-
-                unsafe { device.device().create_image_view(&create_info, None) }?
-            };
-        }
+        let subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::DEPTH,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+        let (depth_images, depth_image_memory, depth_image_views) = Self::create_resources(
+            device,
+            swap_chain_extent,
+            swap_chain_images,
+            depth_format,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            subresource_range,
+            |_| Ok(()),
+        )?;
 
         Ok((
             depth_images,
-            depth_image_memories,
+            depth_image_memory,
             depth_image_views,
             depth_format,
+        ))
+    }
+
+    fn create_storage_resources(
+        device: &crate::Device,
+        swap_chain_extent: &vk::Extent2D,
+        swap_chain_images: &[vk::Image],
+    ) -> Result<(
+        Vec<vk::Image>,
+        Vec<vk::DeviceMemory>,
+        Vec<vk::ImageView>,
+        Vec<vk::Sampler>,
+        Vec<vk::DescriptorImageInfo>,
+        Vec<vk::DescriptorImageInfo>,
+    )> {
+        let format = vk::Format::R8G8B8A8_UNORM;
+        let usage = vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED;
+        let subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+        let image_count = swap_chain_images.len();
+        let (storage_images, storage_image_memory, storage_image_views) = Self::create_resources(
+            device,
+            swap_chain_extent,
+            swap_chain_images,
+            format,
+            usage,
+            subresource_range,
+            |images| unsafe {
+                Self::transition_image_layout(
+                    device,
+                    images,
+                    vk::ImageLayout::UNDEFINED,
+                    vk::ImageLayout::GENERAL,
+                )
+            },
+        )?;
+        let mut sampler = (0..image_count)
+            .into_iter()
+            .map(|_| vk::Sampler::null())
+            .collect::<Vec<_>>();
+        let sampler_create_info = vk::SamplerCreateInfo::builder()
+            .min_filter(vk::Filter::NEAREST)
+            .mag_filter(vk::Filter::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::REPEAT)
+            .address_mode_v(vk::SamplerAddressMode::REPEAT)
+            .address_mode_w(vk::SamplerAddressMode::REPEAT)
+            .anisotropy_enable(false)
+            .max_anisotropy(1.0)
+            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+            .unnormalized_coordinates(false)
+            .compare_enable(false)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+            .mip_lod_bias(0.0)
+            .min_lod(0.0)
+            .max_lod(0.0);
+        let mut write_descriptors = (0..image_count)
+            .into_iter()
+            .map(|_| {
+                vk::DescriptorImageInfo::builder()
+                    .image_layout(vk::ImageLayout::GENERAL)
+                    .build()
+            })
+            .collect::<Vec<_>>();
+        let mut read_descriptors = write_descriptors.clone();
+
+        for sampler in sampler.iter_mut() {
+            *sampler = unsafe { device.device().create_sampler(&sampler_create_info, None) }?;
+        }
+
+        storage_image_views
+            .iter()
+            .zip(
+                sampler.iter().zip(
+                    read_descriptors
+                        .iter_mut()
+                        .zip(write_descriptors.iter_mut()),
+                ),
+            )
+            .for_each(
+                |(image_view, (sampler, (read_descriptor, write_descriptor)))| {
+                    write_descriptor.image_view = *image_view;
+                    read_descriptor.image_view = *image_view;
+                    read_descriptor.sampler = *sampler;
+                },
+            );
+
+        Ok((
+            storage_images,
+            storage_image_memory,
+            storage_image_views,
+            sampler,
+            write_descriptors,
+            read_descriptors,
         ))
     }
 
@@ -496,11 +775,11 @@ impl SwapChain {
             vk::AttachmentDescription::builder()
                 .format(swap_chain_image_format)
                 .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .load_op(vk::AttachmentLoadOp::LOAD)
                 .store_op(vk::AttachmentStoreOp::STORE)
                 .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
                 .build(),
             vk::AttachmentDescription::builder()

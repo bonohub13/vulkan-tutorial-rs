@@ -1,4 +1,5 @@
 use ash::vk;
+use std::collections::HashMap;
 
 pub const MAX_LIGHT: usize = 10;
 
@@ -25,7 +26,8 @@ pub struct FrameInfo<'a> {
     pub frame_time: f32,
     pub command_buffer: vk::CommandBuffer,
     pub camera: &'a crate::Camera,
-    pub global_descriptor_set: vk::DescriptorSet,
+    pub descriptor_sets: &'a HashMap<crate::PipelineIdentifier, Vec<vk::DescriptorSet>>,
+    pub screen_size: &'a vk::Extent2D,
     pub game_objects: &'a mut crate::Map,
 }
 

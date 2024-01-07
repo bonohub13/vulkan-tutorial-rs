@@ -10,7 +10,7 @@ pub struct PointLightPushConstants {
 }
 
 pub struct PointLightSystem {
-    pipeline: Box<crate::Pipeline>,
+    pipeline: Box<crate::GraphicsPipeline>,
     pipeline_layout: vk::PipelineLayout,
 }
 
@@ -102,7 +102,10 @@ impl PointLightSystem {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_layout,
             0,
-            std::slice::from_ref(&frame_info.global_descriptor_set),
+            std::slice::from_ref(
+                &frame_info.descriptor_sets[&crate::PipelineIdentifier::GRAPHICS]
+                    [frame_info.frame_index],
+            ),
             &[],
         );
 
@@ -188,20 +191,20 @@ impl PointLightSystem {
         device: &crate::Device,
         pipeline_layout: &vk::PipelineLayout,
         render_pass: &vk::RenderPass,
-    ) -> Result<Box<crate::Pipeline>> {
+    ) -> Result<Box<crate::GraphicsPipeline>> {
         assert!(
             *pipeline_layout != vk::PipelineLayout::null(),
             "Cannot create pipeline before pipeline layout"
         );
 
-        let mut config_info = crate::Pipeline::enable_alpha_blending();
+        let mut config_info = crate::GraphicsPipeline::enable_alpha_blending();
 
         config_info.binding_descriptions.clear();
         config_info.attribute_descriptions.clear();
         config_info.render_pass = *render_pass;
         config_info.pipeline_layout = *pipeline_layout;
 
-        Ok(Box::new(crate::Pipeline::new(
+        Ok(Box::new(crate::GraphicsPipeline::new(
             &device,
             "./shaders/point_light.vert.spv",
             "./shaders/point_light.frag.spv",

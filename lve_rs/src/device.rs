@@ -577,7 +577,8 @@ impl Device {
             }?;
 
             if queue_family.queue_count > 0 {
-                if (queue_family.queue_flags & vk::QueueFlags::GRAPHICS) == vk::QueueFlags::GRAPHICS
+                if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                    && queue_family.queue_flags.contains(vk::QueueFlags::COMPUTE)
                 {
                     indices.graphics_family = Some(idx as u32);
                 }

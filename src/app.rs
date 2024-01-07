@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ash::vk;
-use std::{cell::RefCell, mem::size_of, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use winit::{
     event::VirtualKeyCode,
     event_loop::{ControlFlow, EventLoop},
@@ -13,16 +13,15 @@ pub struct App {
     window: lve_rs::Window,
     device: lve_rs::Device,
     renderer: lve_rs::Renderer,
+    ray_tracer_system: lve_rs::RayTraceSystem,
     simple_render_system: lve_rs::SimpleRenderSystem,
-    point_light_system: lve_rs::PointLightSystem,
     camera: lve_rs::Camera,
     camera_controller: lve_rs::controller::keyboard::KeyboardMovementController,
     viewer_object: lve_rs::GameObject,
-    global_pool: Box<lve_rs::DescriptorPool>,
+    descriptor_pools: HashMap<lve_rs::PipelineIdentifier, Box<lve_rs::DescriptorPool>>,
     game_objects: lve_rs::Map,
-    global_descriptor_sets: Vec<vk::DescriptorSet>,
-    global_set_layout: Box<lve_rs::DescriptorSetLayout>,
-    ubo_buffers: Vec<Box<lve_rs::Buffer>>,
+    descriptor_sets: HashMap<lve_rs::PipelineIdentifier, Vec<vk::DescriptorSet>>,
+    set_layouts: HashMap<lve_rs::PipelineIdentifier, Box<lve_rs::DescriptorSetLayout>>,
 }
 
 impl App {
@@ -47,13 +46,32 @@ impl App {
         let window = lve_rs::Window::new(event_loop, width, height, "Hello Vulkan!")?;
         let device = lve_rs::Device::new(&window, &lve_rs::ApplicationInfo::default())?;
         let renderer = lve_rs::Renderer::new(&window, &device)?;
-        let global_pool = lve_rs::DescriptorPool::builder()
-            .set_max_sets(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32)
-            .add_pool_size(
-                vk::DescriptorType::UNIFORM_BUFFER,
-                lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32,
-            )
-            .build(&device)?;
+        let descriptor_pools = {
+            let mut pools = HashMap::new();
+
+            pools.insert(
+                lve_rs::PipelineIdentifier::GRAPHICS,
+                lve_rs::DescriptorPool::builder()
+                    .set_max_sets(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32)
+                    .add_pool_size(
+                        vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                        lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32,
+                    )
+                    .build(&device)?,
+            );
+            pools.insert(
+                lve_rs::PipelineIdentifier::COMPUTE,
+                lve_rs::DescriptorPool::builder()
+                    .set_max_sets(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32)
+                    .add_pool_size(
+                        vk::DescriptorType::STORAGE_IMAGE,
+                        lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as u32,
+                    )
+                    .build(&device)?,
+            );
+
+            pools
+        };
         let mut game_objects = lve_rs::Map::new();
 
         Self::load_game_object(&mut game_objects, &device)?;
@@ -62,47 +80,76 @@ impl App {
         let camera_controller =
             lve_rs::controller::keyboard::KeyboardMovementController::new(9.0 * 2.0, 4.25 * 2.0);
         let mut viewer_object = { unsafe { lve_rs::GameObject::create_game_object(None) } };
-        let global_set_layout = lve_rs::DescriptorSetLayout::builder()
-            .add_binding(
-                0,
-                vk::DescriptorType::UNIFORM_BUFFER,
-                vk::ShaderStageFlags::ALL_GRAPHICS,
-                None,
-            )
-            .build(&device)?;
+        let set_layouts = {
+            let mut set_layouts = HashMap::new();
+
+            set_layouts.insert(
+                lve_rs::PipelineIdentifier::GRAPHICS,
+                lve_rs::DescriptorSetLayout::builder()
+                    .add_binding(
+                        0,
+                        vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                        vk::ShaderStageFlags::ALL_GRAPHICS,
+                        None,
+                    )
+                    .build(&device)?,
+            );
+            set_layouts.insert(
+                lve_rs::PipelineIdentifier::COMPUTE,
+                lve_rs::DescriptorSetLayout::builder()
+                    .add_binding(
+                        0,
+                        vk::DescriptorType::STORAGE_IMAGE,
+                        vk::ShaderStageFlags::COMPUTE,
+                        None,
+                    )
+                    .build(&device)?,
+            );
+
+            set_layouts
+        };
+        let ray_tracer_system = lve_rs::RayTraceSystem::new(
+            &device,
+            &set_layouts[&lve_rs::PipelineIdentifier::COMPUTE].descriptor_set_layout(),
+        )?;
         let simple_render_system = lve_rs::SimpleRenderSystem::new(
             &device,
             renderer.swap_chain_render_pass(),
-            &global_set_layout.descriptor_set_layout(),
+            &set_layouts[&lve_rs::PipelineIdentifier::GRAPHICS].descriptor_set_layout(),
         )?;
-        let point_light_system = lve_rs::PointLightSystem::new(
-            &device,
-            renderer.swap_chain_render_pass(),
-            &global_set_layout.descriptor_set_layout(),
-        )?;
-        let mut ubo_buffers = Vec::with_capacity(lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize);
-        let mut global_descriptor_sets = vec![];
+        let mut descriptor_sets = HashMap::new();
+        let mut graphics_descriptor_sets = vec![];
+        let mut compute_descriptor_sets = vec![];
 
         for i in 0..lve_rs::SwapChain::MAX_FRAMES_IN_FLIGHT as usize {
-            ubo_buffers.push(Box::new(lve_rs::Buffer::new(
-                &device,
-                size_of::<lve_rs::GlobalUbo>() as u64,
-                1,
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-                vk::MemoryPropertyFlags::HOST_VISIBLE,
-                Some(device.properties.limits.min_uniform_buffer_offset_alignment),
-            )?));
-            unsafe { ubo_buffers[i].map(&device, None, None) }?;
-            let buffer_info = ubo_buffers[i].descriptor_info(None, None);
-            global_descriptor_sets.push(
+            compute_descriptor_sets.push(
                 unsafe {
-                    lve_rs::DescriptorWriter::new(&global_set_layout, &global_pool)
-                        .write_buffer(0, &buffer_info)
-                        .build(&device)
+                    lve_rs::DescriptorWriter::new(
+                        &set_layouts[&lve_rs::PipelineIdentifier::COMPUTE],
+                        &descriptor_pools[&lve_rs::PipelineIdentifier::COMPUTE],
+                    )
+                    .write_image(0, &renderer.swap_chain().write_descriptors[i])
+                    .build(&device)
+                }
+                .0,
+            );
+            graphics_descriptor_sets.push(
+                unsafe {
+                    lve_rs::DescriptorWriter::new(
+                        &set_layouts[&lve_rs::PipelineIdentifier::GRAPHICS],
+                        &descriptor_pools[&lve_rs::PipelineIdentifier::GRAPHICS],
+                    )
+                    .write_image(0, &renderer.swap_chain().read_descriptors[i])
+                    .build(&device)
                 }
                 .0,
             );
         }
+        descriptor_sets.insert(lve_rs::PipelineIdentifier::COMPUTE, compute_descriptor_sets);
+        descriptor_sets.insert(
+            lve_rs::PipelineIdentifier::GRAPHICS,
+            graphics_descriptor_sets,
+        );
 
         viewer_object.transform.translation.z = -2.5;
         camera.set_view_target(&[-1.0, -2.0, 2.0], &[0.0, 0.0, 2.5], None);
@@ -111,16 +158,15 @@ impl App {
             window,
             device,
             renderer,
+            ray_tracer_system,
             simple_render_system,
-            point_light_system,
             camera,
             camera_controller,
             viewer_object,
-            global_pool,
+            descriptor_pools,
             game_objects,
-            global_descriptor_sets,
-            global_set_layout,
-            ubo_buffers,
+            descriptor_sets,
+            set_layouts,
         })
     }
 
@@ -131,6 +177,16 @@ impl App {
         keys: &[Option<VirtualKeyCode>],
     ) -> Result<()> {
         let aspect = self.renderer.aspect_ratio();
+        let write_descriptors = [
+            lve_rs::DescriptorWriter::new(
+                &self.set_layouts[&lve_rs::PipelineIdentifier::COMPUTE],
+                &self.descriptor_pools[&lve_rs::PipelineIdentifier::COMPUTE],
+            ),
+            lve_rs::DescriptorWriter::new(
+                &self.set_layouts[&lve_rs::PipelineIdentifier::GRAPHICS],
+                &self.descriptor_pools[&lve_rs::PipelineIdentifier::GRAPHICS],
+            ),
+        ];
 
         self.camera_controller
             .move_in_plane_xz(delta_time, &mut self.viewer_object, keys);
@@ -157,6 +213,20 @@ impl App {
             } else {
                 None
             },
+            |device, swap_chain, frame_index| unsafe {
+                write_descriptors[0]
+                    .write_image(0, &swap_chain.write_descriptors[frame_index])
+                    .overwrite(
+                        device,
+                        &self.descriptor_sets[&lve_rs::PipelineIdentifier::COMPUTE][frame_index],
+                    );
+                write_descriptors[1]
+                    .write_image(0, &swap_chain.read_descriptors[frame_index])
+                    .overwrite(
+                        device,
+                        &self.descriptor_sets[&lve_rs::PipelineIdentifier::GRAPHICS][frame_index],
+                    );
+            },
         )?;
 
         if command_buffer != vk::CommandBuffer::null() {
@@ -166,33 +236,24 @@ impl App {
                 frame_time: delta_time,
                 command_buffer,
                 camera: &self.camera,
-                global_descriptor_set: self.global_descriptor_sets[frame_index],
+                descriptor_sets: &self.descriptor_sets,
+                screen_size: &self.renderer.swap_chain().swap_chain_extent(),
                 game_objects: &mut self.game_objects,
             };
-            // update
-            let mut ubo = lve_rs::GlobalUbo {
-                projection: *self.camera.projection(),
-                view: *self.camera.view(),
-                inverse_view: *self.camera.inverse_view(),
-                ..Default::default()
-            };
-            self.point_light_system.update(&mut frame_info, &mut ubo);
+            // Compute
             unsafe {
-                self.ubo_buffers[frame_index].write_to_buffer(
-                    &self.device,
-                    std::slice::from_ref(&ubo),
-                    None,
-                    None,
-                );
-                self.ubo_buffers[frame_index].flush(&self.device, None, None)
-            }?;
-            // render
+                self.renderer
+                    .prepare_to_trace_barrier(&self.device, &command_buffer);
+                self.ray_tracer_system.dispatch(&self.device, &frame_info);
+                self.renderer.enforce_barrier(&self.device, &command_buffer);
+            }
+            // Graphics
+            //  render
             unsafe {
                 self.renderer
                     .begin_swap_chain_render_pass(&self.device, &command_buffer);
                 self.simple_render_system
-                    .render_game_objects(&self.device, &mut frame_info);
-                self.point_light_system.render(&self.device, &frame_info);
+                    .render(&self.device, &mut frame_info);
                 self.renderer
                     .end_swap_chain_render_pass(&self.device, &command_buffer);
                 self.renderer.end_frame(
@@ -282,20 +343,20 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
-            self.global_set_layout.destroy(&self.device);
-            self.ubo_buffers
+            self.set_layouts
                 .iter_mut()
-                .for_each(|ubo_buffer| ubo_buffer.destroy(&self.device));
-            self.ubo_buffers.clear();
+                .for_each(|(_, set_layout)| set_layout.destroy(&self.device));
             for key in self.game_objects.keys() {
                 if let Some(model) = &self.game_objects[key].model {
                     model.borrow_mut().destroy(&self.device);
                 }
             }
             self.game_objects.clear();
-            self.global_pool.destroy(&self.device);
-            self.point_light_system.destroy(&self.device);
+            self.descriptor_pools
+                .iter_mut()
+                .for_each(|(_, pool)| pool.destroy(&self.device));
             self.simple_render_system.destroy(&self.device);
+            self.ray_tracer_system.destroy(&self.device);
             self.renderer.destroy(&self.device);
             self.device.destroy();
         }

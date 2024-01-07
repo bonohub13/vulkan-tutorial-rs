@@ -63,11 +63,12 @@ impl Renderer {
         self.current_frame_index
     }
 
-    pub fn begin_frame(
+    pub fn begin_frame<F: Fn(&crate::Device, &crate::SwapChain, usize)>(
         &mut self,
         window: &crate::Window,
         device: &crate::Device,
         control_flow: Option<&mut ControlFlow>,
+        update_descriptors_func: F,
     ) -> Result<vk::CommandBuffer> {
         assert!(
             !self.frame_started,
@@ -99,6 +100,8 @@ impl Renderer {
         }?;
 
         self.frame_started = true;
+
+        update_descriptors_func(device, &self.swap_chain, self.frame_index());
 
         let command_buffer = *self.current_command_buffer();
         let begin_info = vk::CommandBufferBeginInfo::builder();
@@ -262,6 +265,24 @@ impl Renderer {
         );
 
         device.device().cmd_end_render_pass(*command_buffer);
+    }
+
+    pub unsafe fn prepare_to_trace_barrier(
+        &self,
+        device: &crate::Device,
+        command_buffer: &vk::CommandBuffer,
+    ) {
+        self.swap_chain
+            .prepare_to_trace_barrier(device, command_buffer, self.current_frame_index)
+    }
+
+    pub unsafe fn enforce_barrier(
+        &self,
+        device: &crate::Device,
+        command_buffer: &vk::CommandBuffer,
+    ) {
+        self.swap_chain
+            .enforce_barrier(device, command_buffer, self.current_frame_index)
     }
 
     fn recreate_swap_chain(

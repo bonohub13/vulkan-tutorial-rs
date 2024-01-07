@@ -1,6 +1,5 @@
 use anyhow::Result;
 use ash::vk;
-use std::mem::size_of;
 
 #[derive(Default)]
 #[repr(C, align(16))]
@@ -10,7 +9,7 @@ pub struct SimplePushConstantData {
 }
 
 pub struct SimpleRenderSystem {
-    pipeline: Box<crate::Pipeline>,
+    pipeline: Box<crate::GraphicsPipeline>,
     pipeline_layout: vk::PipelineLayout,
 }
 
@@ -35,11 +34,7 @@ impl SimpleRenderSystem {
             .destroy_pipeline_layout(self.pipeline_layout, None);
     }
 
-    pub unsafe fn render_game_objects(
-        &self,
-        device: &crate::Device,
-        frame_info: &mut crate::FrameInfo,
-    ) {
+    pub unsafe fn render(&self, device: &crate::Device, frame_info: &mut crate::FrameInfo) {
         let device_ref = device.device();
 
         self.pipeline.bind(device, &frame_info.command_buffer);
@@ -48,62 +43,22 @@ impl SimpleRenderSystem {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_layout,
             0,
-            std::slice::from_ref(&frame_info.global_descriptor_set),
+            std::slice::from_ref(
+                &frame_info.descriptor_sets[&crate::PipelineIdentifier::GRAPHICS]
+                    [frame_info.frame_index],
+            ),
             &[],
         );
-        for key in frame_info.game_objects.keys() {
-            if let Some(model) = &frame_info.game_objects[key].model {
-                let push = SimplePushConstantData {
-                    model_matrix: frame_info.game_objects[key].transform.mat4(),
-                    normal_matrix: frame_info.game_objects[key].transform.normal_matrix(),
-                };
-                let offsets = {
-                    let normal_matrix =
-                        bytemuck::offset_of!(SimplePushConstantData, normal_matrix) as u32;
-                    let aligned_offset = |offset: u32| {
-                        if offset % 16 == 0 {
-                            offset
-                        } else {
-                            (offset / 16 + 1) * 16
-                        }
-                    };
-
-                    [0, aligned_offset(normal_matrix)]
-                };
-
-                device_ref.cmd_push_constants(
-                    frame_info.command_buffer,
-                    self.pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    offsets[0],
-                    bytemuck::cast_slice(push.model_matrix.as_slice()),
-                );
-                device_ref.cmd_push_constants(
-                    frame_info.command_buffer,
-                    self.pipeline_layout,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    offsets[1],
-                    bytemuck::cast_slice(push.normal_matrix.as_slice()),
-                );
-                model.borrow().bind(device, &frame_info.command_buffer);
-                model.borrow().draw(device, &frame_info.command_buffer);
-            }
-        }
+        device_ref.cmd_draw(frame_info.command_buffer, 6, 1, 0, 0);
     }
 
     fn create_pipeline_layout(
         device: &crate::Device,
         global_set_layout: &vk::DescriptorSetLayout,
     ) -> Result<vk::PipelineLayout> {
-        let push_constant_range = vk::PushConstantRange::builder()
-            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
-            .offset(0)
-            .size(size_of::<SimplePushConstantData>() as u32)
-            .build();
         let descriptor_set_layouts = vec![*global_set_layout];
-        let create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&descriptor_set_layouts)
-            .push_constant_ranges(std::slice::from_ref(&push_constant_range));
+        let create_info =
+            vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
         let pipeline_layout =
             unsafe { device.device().create_pipeline_layout(&create_info, None) }?;
 
@@ -114,18 +69,20 @@ impl SimpleRenderSystem {
         device: &crate::Device,
         pipeline_layout: &vk::PipelineLayout,
         render_pass: &vk::RenderPass,
-    ) -> Result<Box<crate::Pipeline>> {
+    ) -> Result<Box<crate::GraphicsPipeline>> {
         assert!(
             *pipeline_layout != vk::PipelineLayout::null(),
             "Cannot create pipeline before pipeline layout"
         );
 
-        let mut config_info = crate::Pipeline::default_pipeline_config_info();
+        let mut config_info = crate::GraphicsPipeline::default_pipeline_config_info();
 
+        config_info.binding_descriptions.clear();
+        config_info.attribute_descriptions.clear();
         config_info.render_pass = *render_pass;
         config_info.pipeline_layout = *pipeline_layout;
 
-        Ok(Box::new(crate::Pipeline::new(
+        Ok(Box::new(crate::GraphicsPipeline::new(
             &device,
             "./shaders/simple_shader.vert.spv",
             "./shaders/simple_shader.frag.spv",

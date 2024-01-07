@@ -25,13 +25,45 @@ pub struct PipelineConfigInfo {
     pub subpass: u32,
 }
 
-pub struct Pipeline {
+pub struct GraphicsPipeline {
     graphics_pipeline: vk::Pipeline,
     vert_shader_module: vk::ShaderModule,
     frag_shader_module: vk::ShaderModule,
 }
 
-impl Pipeline {
+pub struct ComputePipeline {
+    compute_pipeline: vk::Pipeline,
+    compute_shader_module: vk::ShaderModule,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PipelineIdentifier {
+    COMPUTE,
+    GRAPHICS,
+}
+
+mod common {
+    use anyhow::Result;
+    use ash::vk;
+    use std::fs::File;
+
+    pub fn read_file(file_path: &str) -> Result<File> {
+        Ok(File::open(file_path)?)
+    }
+
+    pub fn create_shader_module(
+        device: &crate::Device,
+        code: &mut File,
+    ) -> Result<vk::ShaderModule> {
+        let spv_code = ash::util::read_spv(code)?;
+        let create_info = vk::ShaderModuleCreateInfo::builder().code(&spv_code);
+        let shader_module = unsafe { device.device().create_shader_module(&create_info, None) }?;
+
+        Ok(shader_module)
+    }
+}
+
+impl GraphicsPipeline {
     pub fn new(
         device: &lve_rs::Device,
         vert_file_path: &str,
@@ -179,10 +211,6 @@ impl Pipeline {
         }
     }
 
-    fn read_file(file_path: &str) -> Result<File> {
-        Ok(File::open(file_path)?)
-    }
-
     /* --- Helper functions --- */
     fn create_graphics_pipeline(
         device: &lve_rs::Device,
@@ -200,14 +228,14 @@ impl Pipeline {
         );
 
         let vert_shader_module = {
-            let mut vert_code = Self::read_file(vert_file_path)?;
+            let mut vert_code = common::read_file(vert_file_path)?;
 
-            Self::create_shader_module(device, &mut vert_code)?
+            common::create_shader_module(device, &mut vert_code)?
         };
         let frag_shader_module = {
-            let mut frag_code = Self::read_file(frag_file_path)?;
+            let mut frag_code = common::read_file(frag_file_path)?;
 
-            Self::create_shader_module(device, &mut frag_code)?
+            common::create_shader_module(device, &mut frag_code)?
         };
         let graphics_pipeline = {
             let shader_stages = [
@@ -281,12 +309,91 @@ impl Pipeline {
             .device()
             .destroy_pipeline(self.graphics_pipeline, None);
     }
+}
 
-    fn create_shader_module(device: &lve_rs::Device, code: &mut File) -> Result<vk::ShaderModule> {
-        let spv_code = ash::util::read_spv(code)?;
-        let create_info = vk::ShaderModuleCreateInfo::builder().code(&spv_code);
-        let shader_module = unsafe { device.device().create_shader_module(&create_info, None) }?;
+impl ComputePipeline {
+    pub fn new(
+        device: &crate::Device,
+        pipeline_layout: &vk::PipelineLayout,
+        file_path: &str,
+    ) -> Result<Self> {
+        let (compute_pipeline, compute_shader_module) =
+            Self::create_compute_pipeline(device, pipeline_layout, file_path)?;
 
-        Ok(shader_module)
+        Ok(Self {
+            compute_pipeline,
+            compute_shader_module,
+        })
+    }
+
+    pub unsafe fn destroy(&mut self, device: &crate::Device) {
+        let device = device.device();
+
+        device.destroy_shader_module(self.compute_shader_module, None);
+        device.destroy_pipeline(self.compute_pipeline, None);
+    }
+
+    pub unsafe fn bind(&self, device: &crate::Device, command_buffer: &vk::CommandBuffer) {
+        let device = device.device();
+
+        device.cmd_bind_pipeline(
+            *command_buffer,
+            vk::PipelineBindPoint::COMPUTE,
+            self.compute_pipeline,
+        )
+    }
+
+    pub unsafe fn dispatch(
+        &self,
+        device: &crate::Device,
+        command_buffer: &vk::CommandBuffer,
+        extent: &vk::Extent2D,
+    ) {
+        let device = device.device();
+
+        device.cmd_dispatch(*command_buffer, extent.width / 8, extent.height / 8, 1)
+    }
+
+    fn create_compute_pipeline(
+        device: &crate::Device,
+        pipeline_layout: &vk::PipelineLayout,
+        file_path: &str,
+    ) -> Result<(vk::Pipeline, vk::ShaderModule)> {
+        assert!(
+            *pipeline_layout != vk::PipelineLayout::null(),
+            "Cannot create compute pipeline: No pipeline layout provided"
+        );
+
+        let device_ref = device.device();
+        let compute_shader_module = {
+            let mut compute_code = common::read_file(file_path)?;
+            common::create_shader_module(device, &mut compute_code)
+        }?;
+        let compute_pipeline = {
+            let shader_stage = vk::PipelineShaderStageCreateInfo::builder()
+                .stage(vk::ShaderStageFlags::COMPUTE)
+                .module(compute_shader_module)
+                .name(unsafe { CStr::from_bytes_with_nul_unchecked(b"main\0") })
+                .build();
+            let create_info = vk::ComputePipelineCreateInfo::builder()
+                .stage(shader_stage)
+                .layout(*pipeline_layout);
+
+            match unsafe {
+                device_ref.create_compute_pipelines(
+                    vk::PipelineCache::null(),
+                    std::slice::from_ref(&create_info),
+                    None,
+                )
+            } {
+                Ok(pipelines) => Ok(pipelines),
+                Err((_, e)) => Err(e),
+            }?
+        }
+        .into_iter()
+        .next()
+        .context("Failed to create compute pipeline")?;
+
+        Ok((compute_pipeline, compute_shader_module))
     }
 }

@@ -27,11 +27,11 @@ pub use device::{Device, QueryFamilyIndices};
 pub use frame_info::{FrameInfo, GlobalUbo};
 pub use game_objects::{GameObject, Map, ObjectId, TransformComponent};
 pub use model::{Model, Vertex};
-pub use pipeline::Pipeline;
+pub use pipeline::{ComputePipeline, GraphicsPipeline, PipelineIdentifier};
 pub use renderer::Renderer;
 pub use surface::{Surface, SwapChainSupportDetails};
 pub use swap_chain::SwapChain;
-pub use systems::{PointLightSystem, SimplePushConstantData, SimpleRenderSystem};
+pub use systems::{PointLightSystem, RayTraceSystem, SimpleRenderSystem};
 pub use window::Window;
 
 extern crate nalgebra_glm as glm;
